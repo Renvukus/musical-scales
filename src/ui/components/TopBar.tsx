@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import type { SynthPatch } from '../../audio';
-import type { SnapGrid } from '../../domain/music';
+import { SNAP_OPTIONS, type SnapGrid } from '../../domain/music';
 import { PRESETS } from '../../state/presets';
 
 interface TopBarProps {
@@ -111,10 +111,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             value={snap}
             onChange={(e) => onSnapChange(Number(e.target.value) as SnapGrid)}
           >
-            <option value={0.25}>1/16</option>
-            <option value={0.5}>1/8</option>
-            <option value={1}>1/4</option>
-            <option value={2}>1/2</option>
+            {SNAP_OPTIONS.map((opt) => (
+              <option key={opt.label} value={opt.beats}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </label>
 

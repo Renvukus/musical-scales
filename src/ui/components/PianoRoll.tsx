@@ -180,8 +180,9 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   const yToPitch = (y: number) =>
     MAX_PITCH - Math.floor((y - RULER_HEIGHT + scrollY) / ROW_HEIGHT);
 
-  const snapBeat = (beat: number) => Math.max(0, Math.round(beat / snap) * snap);
-  const snapFloor = (beat: number) => Math.max(0, Math.floor(beat / snap) * snap);
+  const roundClean = (v: number) => Math.round(v * 1e6) / 1e6;
+  const snapBeat = (beat: number) => Math.max(0, roundClean(Math.round(beat / snap) * snap));
+  const snapFloor = (beat: number) => Math.max(0, roundClean(Math.floor(beat / snap + 1e-6) * snap));
 
   // Resolve active chord per section for rendering guides & note colors
   const getSectionChord = (sectionId: string): ChordCandidate | undefined => {
@@ -401,7 +402,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       id: `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       pitch,
       start,
-      duration: Math.max(snap, 0.5),
+      duration: snap,
       velocity: 0.78,
     };
     onAddNote(newNote);
@@ -416,16 +417,34 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const drag = dragRef.current;
-    if (drag.type === 'none') return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
+    const canvas = e.currentTarget;
+    const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const drag = dragRef.current;
+
+    // Dynamic cursor feedback when hovering (zero React re-renders)
+    if (drag.type === 'none') {
+      if (y < RULER_HEIGHT && x >= KEY_WIDTH) {
+        canvas.style.cursor = 'ew-resize';
+      } else if (x < KEY_WIDTH && y >= RULER_HEIGHT) {
+        canvas.style.cursor = 'pointer';
+      } else {
+        const hit = hitTestNote(x, y);
+        if (hit) {
+          canvas.style.cursor = hit.isRightEdge ? 'ew-resize' : 'grab';
+        } else {
+          canvas.style.cursor = 'crosshair';
+        }
+      }
+      return;
+    }
+
     const currBeat = Math.max(0, xToBeat(x));
     const currPitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, yToPitch(y)));
 
     if (drag.type === 'box') {
+      canvas.style.cursor = 'crosshair';
       drag.currX = x;
       drag.currY = y;
       forceRender((v) => v + 1);
@@ -433,15 +452,21 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     }
 
     if (drag.type === 'draw') {
+      canvas.style.cursor = 'ew-resize';
       const nextDuration = Math.max(snap, snapBeat(currBeat - drag.anchorBeat));
+      if (currPitch !== drag.pitch) {
+        drag.pitch = currPitch;
+        audioEngine.playNote(currPitch, 0.25, 0.75);
+      }
       const updated = composition.notes.map((n) =>
-        n.id === drag.noteId ? { ...n, duration: nextDuration } : n,
+        n.id === drag.noteId ? { ...n, duration: nextDuration, pitch: currPitch } : n,
       );
       onUpdateNotes(updated, false);
       return;
     }
 
     if (drag.type === 'resize') {
+      canvas.style.cursor = 'ew-resize';
       const delta = currBeat - drag.originBeat;
       const nextDuration = Math.max(snap, snapBeat(drag.initialDuration + delta));
       const updated = composition.notes.map((n) =>
@@ -452,7 +477,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     }
 
     if (drag.type === 'move') {
-      const deltaBeat = Math.round((currBeat - drag.originBeat) / snap) * snap;
+      canvas.style.cursor = 'grabbing';
+      const deltaBeat = roundClean(Math.round((currBeat - drag.originBeat) / snap) * snap);
       const deltaPitch = currPitch - drag.originPitch;
       if (currPitch !== drag.lastPreviewPitch) {
         drag.lastPreviewPitch = currPitch;
@@ -463,7 +489,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         if (!init) return n;
         return {
           ...n,
-          start: Math.max(0, init.start + deltaBeat),
+          start: Math.max(0, roundClean(init.start + deltaBeat)),
           pitch: Math.max(MIN_PITCH, Math.min(MAX_PITCH, init.pitch + deltaPitch)),
         };
       });
@@ -623,19 +649,34 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       }
     }
 
-    // 3. Vertical Beat & Bar Grid Lines across the full visible canvas
-    const step = Math.min(snap, 1);
+    // 3. Vertical Snap, Beat & Bar Grid Lines across the full visible canvas
     const startBeatVis = Math.max(0, Math.floor(scrollX / pixelsPerBeat));
-    for (let b = startBeatVis; b <= renderMaxBeat; b += step) {
+
+    // 3a. Active snap subdivision lines (triplet-safe integer indexing)
+    const firstSnapIdx = Math.max(0, Math.floor(startBeatVis / snap));
+    const lastSnapIdx = Math.ceil(renderMaxBeat / snap);
+    const snapPx = snap * pixelsPerBeat;
+    if (snapPx >= 5) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.055)';
+      ctx.beginPath();
+      for (let idx = firstSnapIdx; idx <= lastSnapIdx; idx++) {
+        const b = idx * snap;
+        const x = Math.floor(beatToX(b)) + 0.5;
+        if (x < KEY_WIDTH || x > width) continue;
+        ctx.moveTo(x, RULER_HEIGHT);
+        ctx.lineTo(x, height);
+      }
+      ctx.stroke();
+    }
+
+    // 3b. Beat and Bar structural lines
+    for (let b = startBeatVis; b <= renderMaxBeat; b += 1) {
       const x = Math.floor(beatToX(b)) + 0.5;
       if (x < KEY_WIDTH || x > width) continue;
-      const isBar = Math.abs(b % beatsPerBar) < 0.001;
-      const isBeat = Math.abs(b - Math.round(b)) < 0.001;
+      const isBar = b % beatsPerBar === 0;
       ctx.strokeStyle = isBar
-        ? 'rgba(255, 255, 255, 0.16)'
-        : isBeat
-          ? 'rgba(255, 255, 255, 0.07)'
-          : 'rgba(255, 255, 255, 0.025)';
+        ? 'rgba(255, 255, 255, 0.2)'
+        : 'rgba(255, 255, 255, 0.095)';
       ctx.beginPath();
       ctx.moveTo(x, RULER_HEIGHT);
       ctx.lineTo(x, height);
@@ -724,6 +765,22 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     ctx.lineTo(width, RULER_HEIGHT + 0.5);
     ctx.stroke();
 
+    // Snap index ticks along the bottom edge of the timeline ruler
+    if (snapPx >= 5) {
+      ctx.strokeStyle = 'rgba(52, 211, 153, 0.42)';
+      ctx.beginPath();
+      for (let idx = firstSnapIdx; idx <= lastSnapIdx; idx++) {
+        const b = idx * snap;
+        const x = Math.floor(beatToX(b)) + 0.5;
+        if (x < KEY_WIDTH || x > width) continue;
+        const isBeat = Math.abs(b - Math.round(b)) < 1e-4;
+        const tickH = isBeat ? 7 : 4;
+        ctx.moveTo(x, RULER_HEIGHT - tickH);
+        ctx.lineTo(x, RULER_HEIGHT);
+      }
+      ctx.stroke();
+    }
+
     ctx.font = '500 10px "JetBrains Mono", monospace';
     for (let b = startBeatVis; b <= renderMaxBeat; b += 1) {
       const x = beatToX(b);
@@ -731,10 +788,10 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       if (b % beatsPerBar === 0) {
         const barNum = Math.floor(b / beatsPerBar) + 1;
         ctx.fillStyle = '#cbd5e1';
-        ctx.fillText(`Bar ${barNum}`, x + 5, 15);
+        ctx.fillText(`Bar ${barNum}`, x + 5, 14);
       } else {
         ctx.fillStyle = '#5c6476';
-        ctx.fillText(`.${(b % beatsPerBar) + 1}`, x + 4, 15);
+        ctx.fillText(`.${(b % beatsPerBar) + 1}`, x + 4, 14);
       }
     }
 

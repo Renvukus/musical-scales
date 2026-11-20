@@ -42,4 +42,22 @@ export interface Composition {
   selectedScaleId?: string;
 }
 
-export type SnapGrid = 0.25 | 0.5 | 1 | 2 | 4;
+export interface SnapOption {
+  label: string;
+  /** Step size in beats (quarter notes). E.g. 1/12 note = 4/12 = 1/3 beat. */
+  beats: number;
+}
+
+export const SNAP_OPTIONS: SnapOption[] = [
+  { label: '1/1 (Bar)', beats: 4 },
+  { label: '1/2', beats: 2 },
+  { label: '1/4', beats: 1 },
+  { label: '1/6 (¼T)', beats: 2 / 3 },
+  { label: '1/8', beats: 0.5 },
+  { label: '1/12 (⅛T)', beats: 1 / 3 },
+  { label: '1/16', beats: 0.25 },
+  { label: '1/24 (1/16T)', beats: 1 / 6 },
+  { label: '1/32', beats: 0.125 },
+];
+
+export type SnapGrid = number;

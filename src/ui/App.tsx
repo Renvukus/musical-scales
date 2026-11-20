@@ -35,6 +35,7 @@ export const App: React.FC = () => {
   const [hoveredChord, setHoveredChord] = useState<ChordCandidate | undefined>();
   const [inspectedScale, setInspectedScale] = useState<ScaleCandidate | undefined>();
   const [hoveredScale, setHoveredScale] = useState<ScaleCandidate | undefined>();
+  const playbackOriginRef = React.useRef<number>(0);
 
   // Real-time harmonic analysis (pure, memoized)
   const analysis = useMemo(() => analyzeComposition(composition), [composition]);
@@ -69,6 +70,7 @@ export const App: React.FC = () => {
   // Audio playback controls
   const startPlayback = useCallback(
     (fromBeat: number) => {
+      playbackOriginRef.current = fromBeat;
       setIsPlaying(true);
       audioEngine.start({
         notes: composition.notes,
@@ -80,7 +82,7 @@ export const App: React.FC = () => {
         onPlayhead: (beat) => setPlayheadBeat(beat),
         onStop: () => {
           setIsPlaying(false);
-          setPlayheadBeat(0);
+          setPlayheadBeat(playbackOriginRef.current);
         },
       });
     },
@@ -91,6 +93,8 @@ export const App: React.FC = () => {
     if (isPlaying) {
       audioEngine.stop();
       setIsPlaying(false);
+      // Return playhead to where playback began (DAW-style pause)
+      setPlayheadBeat(playbackOriginRef.current);
     } else {
       startPlayback(playheadBeat >= composition.totalBeats ? 0 : playheadBeat);
     }
@@ -99,6 +103,7 @@ export const App: React.FC = () => {
   const handleStop = useCallback(() => {
     audioEngine.stop();
     setIsPlaying(false);
+    playbackOriginRef.current = 0;
     setPlayheadBeat(0);
   }, []);
 
@@ -257,6 +262,7 @@ export const App: React.FC = () => {
             onScrollXChange={setScrollX}
             onPixelsPerBeatChange={setPixelsPerBeat}
             onSeek={(beat) => {
+              playbackOriginRef.current = beat;
               setPlayheadBeat(beat);
               if (isPlaying) startPlayback(beat);
             }}
