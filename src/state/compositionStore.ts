@@ -294,19 +294,36 @@ export function compositionReducer(
         action.inversion ?? 0,
         baseOctave,
       );
-      const chordNotes: Note[] = voicedPitches.map((pitch, idx) => ({
-        id: uid(`ch-${idx}`),
-        pitch,
-        start: section.start,
-        duration: sectionLen,
-        velocity: idx === 0 ? 0.76 : 0.68,
-      }));
-
       const keptNotes = action.replaceExisting
         ? comp.notes.filter(
             (n) => n.start + n.duration <= section.start || n.start >= section.end,
           )
         : comp.notes;
+
+      const sectionEnd = section.start + sectionLen;
+      const EPS = 1e-4;
+      const uniquePitches = Array.from(new Set(voicedPitches));
+      const chordNotes: Note[] = uniquePitches
+        .filter(
+          (pitch) =>
+            !keptNotes.some(
+              (n) =>
+                n.pitch === pitch &&
+                n.start < sectionEnd - EPS &&
+                n.start + n.duration > section.start + EPS,
+            ),
+        )
+        .map((pitch, idx) => ({
+          id: uid(`ch-${idx}`),
+          pitch,
+          start: section.start,
+          duration: sectionLen,
+          velocity: idx === 0 ? 0.76 : 0.68,
+        }));
+
+      if (chordNotes.length === 0 && keptNotes.length === comp.notes.length) {
+        return state;
+      }
 
       const notes = [...keptNotes, ...chordNotes];
       const totalBeats = computeTotalBeats(comp, notes, comp.sections);

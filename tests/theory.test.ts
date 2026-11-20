@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Composition, Note } from '../src/domain/music';
+import { compositionReducer } from '../src/state/compositionStore';
+import { createHistory } from '../src/state/history';
 import { PRESETS } from '../src/state/presets';
 import {
   analyzeComposition,
@@ -176,5 +178,49 @@ describe('Harmonic Analysis Engine', () => {
     const tritone = analyzeSelectedInterval([n(60, 0, 1), n(66, 0, 1)]);
     expect(tritone?.name).toContain('Tritone');
     expect(tritone?.consonance).toBe('Sharp Dissonance');
+  });
+
+  it('inserts chord voicings idempotently without duplicating existing notes', () => {
+    const empty: Composition = {
+      title: 'Idempotent Test',
+      tempo: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      totalBeats: 8,
+      notes: [],
+      sections: [{ id: 'sec-1', start: 0, end: 4 }],
+    };
+
+    const s0 = createHistory(empty);
+    // Insert C major root voicing (C3=48, E3=52, G3=55)
+    const s1 = compositionReducer(s0, {
+      type: 'INSERT_CHORD_IN_SECTION',
+      sectionId: 'sec-1',
+      pitchClasses: [0, 4, 7],
+      intervals: [0, 4, 7],
+      inversion: 0,
+    });
+    expect(s1.present.notes.map((x) => x.pitch)).toEqual([48, 52, 55]);
+    expect(s1.past.length).toBe(1);
+
+    // Repeating the same voicing insert should be a no-op (no duplicates, no extra undo step)
+    const s2 = compositionReducer(s1, {
+      type: 'INSERT_CHORD_IN_SECTION',
+      sectionId: 'sec-1',
+      pitchClasses: [0, 4, 7],
+      intervals: [0, 4, 7],
+      inversion: 0,
+    });
+    expect(s2).toBe(s1);
+    expect(s2.present.notes.length).toBe(3);
+
+    // Inserting 1st inversion (E3=52, G3=55, C4=60) should only add the missing C4=60
+    const s3 = compositionReducer(s2, {
+      type: 'INSERT_CHORD_IN_SECTION',
+      sectionId: 'sec-1',
+      pitchClasses: [0, 4, 7],
+      intervals: [0, 4, 7],
+      inversion: 1,
+    });
+    expect(s3.present.notes.map((x) => x.pitch)).toEqual([48, 52, 55, 60]);
   });
 });
