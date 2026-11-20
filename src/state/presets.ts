@@ -15,7 +15,7 @@ function makeFourBarSections(): Section[] {
     { id: 'sec-1', start: 0, end: 4 },
     { id: 'sec-2', start: 4, end: 8 },
     { id: 'sec-3', start: 8, end: 12 },
-    { id: 'sec-4', start: 12, end: 16 },
+    { id: 'sec-4', start: 12, end: Infinity },
   ];
 }
 

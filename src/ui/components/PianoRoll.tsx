@@ -120,6 +120,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1);
   const [activePitches, setActivePitches] = useState<ReadonlySet<number>>(() => new Set());
   const dragRef = useRef<DragMode>({ type: 'none' });
+  const isPanningRef = useRef(false);
   const [, forceRender] = useState(0);
 
   // Subscribe to currently sounding pitches (both manual audition & playback)
@@ -373,6 +374,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // 0. Middle-click + drag -> pan horizontally & vertically across the composition
     if (e.button === 1) {
       e.preventDefault();
+      isPanningRef.current = true;
       const startClientX = e.clientX;
       const startClientY = e.clientY;
       const startScrollX = latestRef.current.scrollX;
@@ -391,6 +393,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       };
 
       const onPanUp = () => {
+        isPanningRef.current = false;
         canvas.style.cursor = 'crosshair';
         document.body.style.cursor = '';
         window.removeEventListener('mousemove', onPanMove);
@@ -493,7 +496,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
     const hit = hitTestNote(x, y);
 
-    // 3. Right-click -> LMMS instant delete
+    // 3. Right-click -> delete note if clicked on one, or start box selection on empty grid
     if (e.button === 2) {
       if (hit) {
         if (selectedIds.has(hit.note.id)) {
@@ -502,6 +505,9 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         } else {
           onDeleteNotes([hit.note.id]);
         }
+      } else {
+        dragRef.current = { type: 'box', startX: x, startY: y, currX: x, currY: y };
+        forceRender((v) => v + 1);
       }
       return;
     }
@@ -577,6 +583,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isPanningRef.current) return;
     const canvas = e.currentTarget;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -727,11 +734,6 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, rowHeight);
       }
 
-      if (activePitches.has(pitch)) {
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.13)';
-        ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, rowHeight);
-      }
-
       // Crisp 1px horizontal divider
       const lineY = Math.floor(y + rowHeight) + 0.5;
       ctx.strokeStyle = pc === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.035)';
@@ -744,7 +746,9 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // 2. Per-Section Chord Ghost Guides & Section Dividers
     for (const section of composition.sections) {
       const sx = Math.max(KEY_WIDTH, beatToX(section.start));
-      const ex = Math.min(width, beatToX(section.end));
+      const ex = Number.isFinite(section.end)
+        ? Math.min(width, beatToX(section.end))
+        : width;
       if (ex <= KEY_WIDTH || sx >= width) continue;
 
       const chord = getSectionChord(section.id);
@@ -777,10 +781,9 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         }
       }
 
-      // Section boundary vertical dashed line
-      for (const edgeBeat of [section.start, section.end]) {
-        if (edgeBeat <= 0) continue;
-        const bx = Math.floor(beatToX(edgeBeat)) + 0.5;
+      // Section left-edge boundary vertical dashed line
+      if (section.start > 0) {
+        const bx = Math.floor(beatToX(section.start)) + 0.5;
         if (bx >= KEY_WIDTH && bx <= width) {
           ctx.save();
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';

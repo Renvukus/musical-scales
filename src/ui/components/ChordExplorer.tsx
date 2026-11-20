@@ -31,7 +31,8 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
   }
 
   const topCandidates = sectionAnalysis.candidates.slice(0, 18);
-  const activeChordId = section.selectedChordId ?? sectionAnalysis.topChord?.id;
+  const autoChord = sectionAnalysis.topChord;
+  const isAutoSelected = !section.selectedChordId;
 
   const auditionChord = (e: React.MouseEvent, chord: ChordCandidate) => {
     e.stopPropagation();
@@ -39,6 +40,10 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
     const pitches = chord.definition.intervals.map((semi) => baseMidi + semi);
     audioEngine.playChord(pitches, 0.95, 0.78);
   };
+
+  const rangeLabel = Number.isFinite(section.end)
+    ? `Beats ${section.start + 1}–${section.end}`
+    : `Beats ${section.start + 1}+`;
 
   return (
     <div className="explorer-list" onMouseLeave={() => onHoverChord(undefined)}>
@@ -51,30 +56,108 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
         }}
       >
         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-          Beats {section.start + 1}–{section.end} · {sectionAnalysis.noteCount} note
+          {rangeLabel} · {sectionAnalysis.noteCount} note
           {sectionAnalysis.noteCount === 1 ? '' : 's'}
           {sectionAnalysis.isAmbiguous ? ' · Multiple strong fits' : ''}
         </span>
-        {section.selectedChordId && (
-          <button
-            className="btn btn-sm"
-            onClick={() => onSelectChord(section.id, undefined)}
-            title="Use automatically detected top chord"
-          >
-            Auto
-          </button>
-        )}
+      </div>
+
+      {/* Prominent always-visible Auto chord card */}
+      {autoChord && (
+        <div
+          className={`candidate-row ${isAutoSelected ? 'is-selected' : ''}`}
+          style={{
+            marginBottom: '4px',
+            borderColor: isAutoSelected ? 'var(--border-strong)' : 'var(--border-medium)',
+          }}
+          onMouseEnter={() => onHoverChord(autoChord)}
+          onClick={() => {
+            onSelectChord(section.id, undefined);
+            onInspectChord(autoChord);
+            const baseMidi = 48 + autoChord.rootPc;
+            audioEngine.playChord(
+              autoChord.definition.intervals.map((s) => baseMidi + s),
+              0.75,
+              0.72,
+            );
+          }}
+          title="Automatically pick the highest-scoring chord as notes change"
+        >
+          <div className={`candidate-accent-bar bg-fn-${autoChord.harmonicFunction}`} />
+          <div className="candidate-top">
+            <div className="candidate-title-group">
+              <span className="pill pill-clean" style={{ fontSize: '10px' }}>
+                Auto
+              </span>
+              <span className="candidate-symbol">
+                {autoChord.symbol}
+                {isAutoSelected ? ' ★' : ''}
+              </span>
+              <span className={`candidate-roman soft-fn-${autoChord.harmonicFunction}`}>
+                {autoChord.romanNumeral}
+              </span>
+            </div>
+            <span className="candidate-score">{autoChord.score}%</span>
+          </div>
+
+          <div className="candidate-bottom">
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px' }}>
+              {autoChord.noteNames.join(' · ')}
+            </span>
+            <div className="candidate-actions">
+              {sectionAnalysis.noteCount > 0 &&
+                (autoChord.outsideNoteCount === 0 ? (
+                  <span className="pill pill-clean">0 out</span>
+                ) : (
+                  <span
+                    className="pill pill-outside"
+                    title={`Outside notes: ${autoChord.outsidePitchNames.join(', ')}`}
+                  >
+                    {autoChord.outsideNoteCount} out
+                  </span>
+                ))}
+              <button
+                className="btn btn-sm"
+                onClick={(e) => auditionChord(e, autoChord)}
+                title={`Play ${autoChord.fullName}`}
+              >
+                ▶
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInsertChord(section.id, autoChord);
+                }}
+                title={`Insert ${autoChord.symbol} into this section`}
+              >
+                + Insert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          fontSize: '10px',
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: 'var(--text-muted)',
+          padding: '2px 2px 0',
+        }}
+      >
+        Ranked Chords
       </div>
 
       {topCandidates.map((chord) => {
-        const isActive = chord.id === activeChordId;
         const isPinned = chord.id === section.selectedChordId;
         const fn = chord.harmonicFunction;
 
         return (
           <div
             key={chord.id}
-            className={`candidate-row ${isActive ? 'is-selected' : ''}`}
+            className={`candidate-row ${isPinned ? 'is-selected' : ''}`}
             onMouseEnter={() => onHoverChord(chord)}
             onClick={() => {
               onSelectChord(section.id, isPinned ? undefined : chord.id);

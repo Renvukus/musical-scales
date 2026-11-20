@@ -69,13 +69,13 @@ export function importMidiToComposition(
   const bars = Math.max(4, Math.min(32, Math.ceil(maxEndBeat / numerator)));
   const totalBeats = bars * numerator;
 
-  // Create default 1-bar chord sections so harmonic analysis works immediately
+  // Create default 1-bar chord sections (last section extends to end of time)
   const sections: Section[] = [];
   for (let b = 0; b < bars; b++) {
     sections.push({
       id: `sec-${b + 1}`,
       start: b * numerator,
-      end: (b + 1) * numerator,
+      end: b === bars - 1 ? Infinity : (b + 1) * numerator,
     });
   }
 

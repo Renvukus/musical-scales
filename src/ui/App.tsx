@@ -249,6 +249,7 @@ export const App: React.FC = () => {
             analysis={analysis}
             activeSectionId={activeSection?.id ?? ''}
             isSectionFocused={sectionFocused}
+            snap={snap}
             pixelsPerBeat={pixelsPerBeat}
             scrollX={scrollX}
             onSelectSection={(id) => {
@@ -257,22 +258,14 @@ export const App: React.FC = () => {
               setInspectedChord(undefined);
               setSidebarTab('chords');
             }}
-            onSplitSection={(beat) => dispatch({ type: 'SPLIT_SECTION', beat })}
-            onAddSectionAt={(beat) => dispatch({ type: 'ADD_SECTION_AT', beat })}
-            onMoveBoundary={(leftId, rightId, beat, commit) =>
+            onSplitSection={(beat, s) => dispatch({ type: 'SPLIT_SECTION', beat, snap: s })}
+            onMoveBoundary={(leftId, rightId, beat, s, commit) =>
               dispatch({
                 type: 'MOVE_SECTION_BOUNDARY',
                 leftSectionId: leftId,
                 rightSectionId: rightId,
                 beat,
-                commit,
-              })
-            }
-            onResizeLastSection={(sectionId, endBeat, commit) =>
-              dispatch({
-                type: 'RESIZE_LAST_SECTION',
-                sectionId,
-                endBeat,
+                snap: s,
                 commit,
               })
             }
@@ -321,13 +314,13 @@ export const App: React.FC = () => {
                 <span className="kbd">R-Click / X</span> Delete
               </span>
               <span>
-                <span className="kbd">Ctrl+Drag</span> Box Select
+                <span className="kbd">R-Click Drag</span> Box Select
               </span>
               <span>
-                <span className="kbd">Ctrl+C/V/D</span> Copy / Paste / Dup
+                <span className="kbd">Middle-Drag</span> Pan
               </span>
               <span>
-                <span className="kbd">R-Click Chord Bar</span> Add / Split Section
+                <span className="kbd">R-Click Chord Bar</span> Split Chord
               </span>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
