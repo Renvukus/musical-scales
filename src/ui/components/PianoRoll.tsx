@@ -16,6 +16,7 @@ interface PianoRollProps {
   snap: SnapGrid;
   showGuides: boolean;
   isPlaying: boolean;
+  isSectionFocused: boolean;
   playheadBeat: number;
   pixelsPerBeat: number;
   scrollX: number;
@@ -23,6 +24,7 @@ interface PianoRollProps {
   onPixelsPerBeatChange: (ppb: number) => void;
   onSeek: (beat: number) => void;
   onSelectSection: (sectionId: string) => void;
+  onFocusNotes: () => void;
   onAddNote: (note: Note) => void;
   onAddNotes: (notes: Note[]) => void;
   onUpdateNotes: (notes: Note[], commit: boolean) => void;
@@ -94,6 +96,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   snap,
   showGuides,
   isPlaying,
+  isSectionFocused,
   playheadBeat,
   pixelsPerBeat,
   scrollX,
@@ -101,6 +104,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   onPixelsPerBeatChange,
   onSeek,
   onSelectSection,
+  onFocusNotes,
   onAddNote,
   onAddNotes,
   onUpdateNotes,
@@ -137,6 +141,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     pixelsPerBeat,
     rowHeight,
     canvasSize,
+    isSectionFocused,
   });
   latestRef.current = {
     composition,
@@ -149,6 +154,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     pixelsPerBeat,
     rowHeight,
     canvasSize,
+    isSectionFocused,
   };
 
   // Track devicePixelRatio changes (browser zoom in/out) so canvas stays razor sharp
@@ -277,9 +283,10 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const mod = e.ctrlKey || e.metaKey;
 
       if (
-        e.key === 'Delete' ||
-        e.key === 'Backspace' ||
-        (!mod && !e.altKey && e.key.toLowerCase() === 'x')
+        !latestRef.current.isSectionFocused &&
+        (e.key === 'Delete' ||
+          e.key === 'Backspace' ||
+          (!mod && !e.altKey && e.key.toLowerCase() === 'x'))
       ) {
         if (sel.size > 0) {
           e.preventDefault();
@@ -357,6 +364,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
   // Mouse interactions (LMMS-inspired)
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onFocusNotes();
     const canvas = e.currentTarget;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;

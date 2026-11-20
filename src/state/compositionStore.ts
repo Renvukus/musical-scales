@@ -23,6 +23,7 @@ export type CompositionAction =
   | { type: 'ADD_SECTION_AT'; beat?: number }
   | { type: 'MOVE_SECTION_BOUNDARY'; leftSectionId: string; rightSectionId: string; beat: number; commit?: boolean }
   | { type: 'RESIZE_LAST_SECTION'; sectionId: string; endBeat: number; commit?: boolean }
+  | { type: 'DELETE_SECTION'; sectionId: string }
   | { type: 'MERGE_SECTION_WITH_PREV'; sectionId: string }
   | { type: 'INSERT_CHORD_IN_SECTION'; sectionId: string; pitchClasses: PitchClass[]; octave?: number; replaceExisting?: boolean }
   | { type: 'UNDO' }
@@ -194,6 +195,29 @@ export function compositionReducer(
       return action.commit === false
         ? replacePresent(state, next)
         : pushHistory(state, next);
+    }
+
+    case 'DELETE_SECTION': {
+      const sorted = [...comp.sections].sort((a, b) => a.start - b.start);
+      if (sorted.length <= 1) return state;
+      const idx = sorted.findIndex((s) => s.id === action.sectionId);
+      if (idx === -1) return state;
+
+      let sections: Section[];
+      if (idx < sorted.length - 1) {
+        // Delete this chord's left edge and merge its span into the later chord
+        const deleted = sorted[idx];
+        const nextSec = { ...sorted[idx + 1], start: deleted.start };
+        sections = [
+          ...sorted.slice(0, idx),
+          nextSec,
+          ...sorted.slice(idx + 2),
+        ];
+      } else {
+        // Last chord section: remove it cleanly
+        sections = sorted.slice(0, idx);
+      }
+      return pushHistory(state, { ...comp, sections });
     }
 
     case 'MERGE_SECTION_WITH_PREV': {

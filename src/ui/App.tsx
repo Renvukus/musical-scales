@@ -20,6 +20,7 @@ export const App: React.FC = () => {
   const [activeSectionId, setActiveSectionId] = useState<string>(
     () => composition.sections[0]?.id ?? 'sec-1',
   );
+  const [sectionFocused, setSectionFocused] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'chords' | 'scales'>('chords');
   const [snap, setSnap] = useState<SnapGrid>(0.5);
   const [patch, setPatch] = useState<SynthPatch>('epiano');
@@ -125,27 +126,37 @@ export const App: React.FC = () => {
     setPlayheadBeat(0);
   }, []);
 
-  // Global keyboard shortcuts (Space = Play/Pause, Ctrl+Z / Ctrl+Shift+Z = Undo/Redo)
+  // Global keyboard shortcuts (Space = Play/Pause, Ctrl+Z/Y = Undo/Redo, Del/X = Delete focused chord section)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
+      const mod = e.ctrlKey || e.metaKey;
       if (e.code === 'Space') {
         e.preventDefault();
         handleTogglePlay();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      } else if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) dispatch({ type: 'REDO' });
         else dispatch({ type: 'UNDO' });
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      } else if (mod && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         dispatch({ type: 'REDO' });
+      } else if (
+        sectionFocused &&
+        activeSection &&
+        (e.key === 'Delete' ||
+          e.key === 'Backspace' ||
+          (!mod && !e.altKey && e.key.toLowerCase() === 'x'))
+      ) {
+        e.preventDefault();
+        dispatch({ type: 'DELETE_SECTION', sectionId: activeSection.id });
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleTogglePlay]);
+  }, [handleTogglePlay, sectionFocused, activeSection]);
 
   // Stop audio on unmount
   useEffect(() => () => audioEngine.stop(), []);
@@ -237,10 +248,12 @@ export const App: React.FC = () => {
             sections={composition.sections}
             analysis={analysis}
             activeSectionId={activeSection?.id ?? ''}
+            isSectionFocused={sectionFocused}
             pixelsPerBeat={pixelsPerBeat}
             scrollX={scrollX}
             onSelectSection={(id) => {
               setActiveSectionId(id);
+              setSectionFocused(true);
               setInspectedChord(undefined);
               setSidebarTab('chords');
             }}
@@ -263,8 +276,8 @@ export const App: React.FC = () => {
                 commit,
               })
             }
-            onMergeWithPrev={(id) =>
-              dispatch({ type: 'MERGE_SECTION_WITH_PREV', sectionId: id })
+            onDeleteSection={(id) =>
+              dispatch({ type: 'DELETE_SECTION', sectionId: id })
             }
           />
 
@@ -275,6 +288,7 @@ export const App: React.FC = () => {
             snap={snap}
             showGuides={showGuides}
             isPlaying={isPlaying}
+            isSectionFocused={sectionFocused}
             playheadBeat={playheadBeat}
             pixelsPerBeat={pixelsPerBeat}
             scrollX={scrollX}
@@ -289,6 +303,7 @@ export const App: React.FC = () => {
               setActiveSectionId(id);
               setInspectedChord(undefined);
             }}
+            onFocusNotes={() => setSectionFocused(false)}
             onAddNote={(note) => dispatch({ type: 'ADD_NOTE', note })}
             onAddNotes={(notes) => dispatch({ type: 'ADD_NOTES', notes })}
             onUpdateNotes={(notes, commit) =>
