@@ -23,6 +23,7 @@ export type CompositionAction =
   | { type: 'SPLIT_SECTION'; beat: number; snap?: number }
   | { type: 'MOVE_SECTION_BOUNDARY'; leftSectionId: string; rightSectionId: string; beat: number; snap?: number; commit?: boolean }
   | { type: 'DELETE_SECTION'; sectionId: string }
+  | { type: 'CLEAR_SECTIONS' }
   | { type: 'INSERT_CHORD_IN_SECTION'; sectionId: string; pitchClasses: PitchClass[]; octave?: number; replaceExisting?: boolean }
   | { type: 'UNDO' }
   | { type: 'REDO' };
@@ -226,6 +227,11 @@ export function compositionReducer(
         sections = [nextSec, ...sorted.slice(2)];
       }
       return pushHistory(state, { ...comp, sections: normalizeSections(sections) });
+    }
+
+    case 'CLEAR_SECTIONS': {
+      const fresh: Section[] = [{ id: 'sec-1', start: 0, end: Infinity }];
+      return pushHistory(state, { ...comp, sections: fresh });
     }
 
     case 'INSERT_CHORD_IN_SECTION': {

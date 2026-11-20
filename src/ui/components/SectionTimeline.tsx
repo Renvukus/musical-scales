@@ -20,6 +20,7 @@ interface SectionTimelineProps {
     snap: SnapGrid,
     commit: boolean,
   ) => void;
+  onClearSections: () => void;
 }
 
 export const SectionTimeline: React.FC<SectionTimelineProps> = ({
@@ -33,6 +34,7 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
   onSelectSection,
   onSplitSection,
   onMoveBoundary,
+  onClearSections,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const sorted = [...sections].sort((a, b) => a.start - b.start);
@@ -92,7 +94,16 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
         title="Click a chord's left edge to select (Del/X to delete) or drag to move; right-click or double-click to split at the current snap"
       >
         <span>Chords</span>
-        <span style={{ fontSize: '9px', opacity: 0.7 }}>R-click split</span>
+        <button
+          id="btn-clear-chords"
+          className="btn btn-sm"
+          style={{ height: '18px', padding: '0 6px', fontSize: '9.5px', textTransform: 'none', letterSpacing: 'normal' }}
+          disabled={sorted.length <= 1 && !sorted[0]?.selectedChordId}
+          onClick={onClearSections}
+          title="Clear all chord splits and pinned chords (Ctrl+Z to undo)"
+        >
+          Clear
+        </button>
       </div>
       <div
         ref={trackRef}

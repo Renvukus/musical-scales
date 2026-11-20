@@ -347,6 +347,11 @@ export const App: React.FC = () => {
                 commit,
               })
             }
+            onClearSections={() => {
+              dispatch({ type: 'CLEAR_SECTIONS' });
+              setActiveSectionId('sec-1');
+              setInspectedChord(undefined);
+            }}
           />
 
           <PianoRoll
