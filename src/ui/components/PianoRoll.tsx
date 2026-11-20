@@ -941,10 +941,13 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         ctx.lineWidth = 1;
       }
 
-      if (drawW >= 28) {
+      const noteFontSize = Math.max(8, Math.min(14, Math.round(rowHeight * 0.54)));
+      if (rowHeight >= 11 && drawW >= noteFontSize * 2.6) {
         ctx.fillStyle = isNoteSounding || !ownerSec || inChord ? '#091114' : '#f1f5f9';
-        ctx.font = '600 10px "JetBrains Mono", monospace';
-        ctx.fillText(midiToNoteName(note.pitch), drawX + 6, ny + rowHeight - 6);
+        ctx.font = `600 ${noteFontSize}px "JetBrains Mono", monospace`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(midiToNoteName(note.pitch), drawX + 6, ny + rowHeight / 2 + 0.5);
+        ctx.textBaseline = 'alphabetic';
       }
     }
 
@@ -1056,14 +1059,20 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       }
 
       const showKeyLabel =
-        isKeyPlaying || (rowHeight >= 13 ? pc === 0 || !black : pc === 0 && rowHeight >= 9);
+        isKeyPlaying || (rowHeight >= 12 ? pc === 0 || !black : pc === 0 && rowHeight >= 8);
       if (showKeyLabel) {
+        const keyFontSize =
+          isKeyPlaying || pc === 0
+            ? Math.max(7.5, Math.min(13, Math.round(rowHeight * 0.52 * 2) / 2))
+            : Math.max(7, Math.min(11.5, Math.round(rowHeight * 0.45 * 2) / 2));
         ctx.fillStyle = isKeyPlaying ? '#091114' : pc === 0 ? '#eef1f6' : '#7b8396';
         ctx.font =
           isKeyPlaying || pc === 0
-            ? '600 10px "JetBrains Mono", monospace'
-            : '400 9px "JetBrains Mono", monospace';
-        ctx.fillText(midiToNoteName(pitch), 8, y + rowHeight - Math.max(2, Math.floor((rowHeight - 9) / 2)));
+            ? `600 ${keyFontSize}px "JetBrains Mono", monospace`
+            : `400 ${keyFontSize}px "JetBrains Mono", monospace`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(midiToNoteName(pitch), 8, y + rowHeight / 2 + 0.5);
+        ctx.textBaseline = 'alphabetic';
       }
     }
 
