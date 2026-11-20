@@ -220,11 +220,19 @@ export const App: React.FC = () => {
       ) {
         e.preventDefault();
         handleDeleteSection(activeSection.id);
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === 'c' && displayedChord) {
+        e.preventDefault();
+        const baseMidi = 48 + displayedChord.rootPc;
+        audioEngine.playChord(
+          displayedChord.definition.intervals.map((semi) => baseMidi + semi),
+          0.9,
+          0.76,
+        );
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleTogglePlay, sectionFocused, activeSection, handleDeleteSection]);
+  }, [handleTogglePlay, sectionFocused, activeSection, handleDeleteSection, displayedChord]);
 
   // Stop audio on unmount
   useEffect(() => () => audioEngine.stop(), []);
