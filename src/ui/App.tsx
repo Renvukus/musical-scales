@@ -67,17 +67,35 @@ export const App: React.FC = () => {
 
   const displayedScale = hoveredScale ?? inspectedScale ?? analysis.activeScale;
 
+  // Compute playable end beat strictly from notes (never capped by chord sections)
+  const getPlaybackEndBeat = useCallback(
+    (fromBeat: number) => {
+      const beatsPerBar = composition.timeSignature.numerator;
+      const lastNoteEnd = composition.notes.reduce(
+        (max, n) => Math.max(max, n.start + n.duration),
+        0,
+      );
+      const minContentEnd = Math.max(beatsPerBar * 4, Math.ceil(lastNoteEnd / beatsPerBar) * beatsPerBar);
+      if (fromBeat >= minContentEnd) {
+        return Math.ceil((fromBeat + beatsPerBar * 4) / beatsPerBar) * beatsPerBar;
+      }
+      return minContentEnd;
+    },
+    [composition.notes, composition.timeSignature.numerator],
+  );
+
   // Audio playback controls
   const startPlayback = useCallback(
     (fromBeat: number) => {
       playbackOriginRef.current = fromBeat;
       setIsPlaying(true);
+      const endBeat = getPlaybackEndBeat(fromBeat);
       audioEngine.start({
         notes: composition.notes,
         tempo: composition.tempo,
         startBeat: fromBeat,
         loopStartBeat: 0,
-        loopEndBeat: composition.totalBeats,
+        loopEndBeat: endBeat,
         loop,
         onPlayhead: (beat) => setPlayheadBeat(beat),
         onStop: () => {
@@ -86,7 +104,7 @@ export const App: React.FC = () => {
         },
       });
     },
-    [composition.notes, composition.tempo, composition.totalBeats, loop],
+    [composition.notes, composition.tempo, getPlaybackEndBeat, loop],
   );
 
   const handleTogglePlay = useCallback(() => {
@@ -96,9 +114,9 @@ export const App: React.FC = () => {
       // Return playhead to where playback began (DAW-style pause)
       setPlayheadBeat(playbackOriginRef.current);
     } else {
-      startPlayback(playheadBeat >= composition.totalBeats ? 0 : playheadBeat);
+      startPlayback(playheadBeat);
     }
-  }, [isPlaying, playheadBeat, composition.totalBeats, startPlayback]);
+  }, [isPlaying, playheadBeat, startPlayback]);
 
   const handleStop = useCallback(() => {
     audioEngine.stop();

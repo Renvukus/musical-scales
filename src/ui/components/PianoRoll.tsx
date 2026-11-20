@@ -204,7 +204,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         // Vertical zoom anchored under cursor
         const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
         const factor = delta < 0 ? 1.12 : 0.89;
-        const nextRowH = Math.max(12, Math.min(40, Math.round(cur.rowHeight * factor)));
+        const nextRowH = Math.max(7, Math.min(44, Math.round(cur.rowHeight * factor)));
         if (nextRowH !== cur.rowHeight) {
           const anchorY = Math.max(0, y - RULER_HEIGHT);
           const pitchRowOffset = (anchorY + cur.scrollY) / cur.rowHeight;
@@ -224,8 +224,12 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       }
 
       // Default scroll wheel -> horizontal zoom anchored under cursor
-      const factor = e.deltaY < 0 ? 1.12 : 0.89;
-      const nextPpb = Math.max(24, Math.min(240, Math.round(cur.pixelsPerBeat * factor)));
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const rawNext = cur.pixelsPerBeat * factor;
+      const nextPpb = Math.max(
+        6,
+        Math.min(240, factor > 1 ? Math.ceil(rawNext) : Math.floor(rawNext)),
+      );
       if (nextPpb !== cur.pixelsPerBeat) {
         const anchorX = Math.max(0, x - KEY_WIDTH);
         const anchorBeat = (anchorX + cur.scrollX) / cur.pixelsPerBeat;
@@ -366,6 +370,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const startScrollX = latestRef.current.scrollX;
       const startScrollY = latestRef.current.scrollY;
       canvas.style.cursor = 'grabbing';
+      document.body.style.cursor = 'grabbing';
 
       const onPanMove = (ev: MouseEvent) => {
         const dx = ev.clientX - startClientX;
@@ -379,6 +384,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
       const onPanUp = () => {
         canvas.style.cursor = 'crosshair';
+        document.body.style.cursor = '';
         window.removeEventListener('mousemove', onPanMove);
         window.removeEventListener('mouseup', onPanUp);
       };
@@ -921,14 +927,19 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     }
 
     ctx.font = '500 10px "JetBrains Mono", monospace';
+    const barPx = beatsPerBar * pixelsPerBeat;
+    const barLabelStep = barPx < 22 ? 4 : barPx < 44 ? 2 : 1;
+    const showBeatLabels = pixelsPerBeat >= 26;
     for (let b = startBeatVis; b <= renderMaxBeat; b += 1) {
       const x = beatToX(b);
       if (x < KEY_WIDTH - 10 || x > width) continue;
       if (b % beatsPerBar === 0) {
         const barNum = Math.floor(b / beatsPerBar) + 1;
-        ctx.fillStyle = '#cbd5e1';
-        ctx.fillText(`Bar ${barNum}`, x + 5, 14);
-      } else {
+        if ((barNum - 1) % barLabelStep === 0) {
+          ctx.fillStyle = '#cbd5e1';
+          ctx.fillText(barPx < 52 ? `${barNum}` : `Bar ${barNum}`, x + 5, 14);
+        }
+      } else if (showBeatLabels) {
         ctx.fillStyle = '#5c6476';
         ctx.fillText(`.${(b % beatsPerBar) + 1}`, x + 4, 14);
       }
@@ -965,16 +976,18 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
       if (inScale && !isKeyPlaying) {
         ctx.fillStyle = 'rgba(52, 211, 153, 0.35)';
-        ctx.fillRect(KEY_WIDTH - 5, y + 2, 4, rowHeight - 4);
+        ctx.fillRect(KEY_WIDTH - 5, y + 2, 4, Math.max(2, rowHeight - 4));
       }
 
-      if (isKeyPlaying || pc === 0 || !black) {
+      const showKeyLabel =
+        isKeyPlaying || (rowHeight >= 13 ? pc === 0 || !black : pc === 0 && rowHeight >= 9);
+      if (showKeyLabel) {
         ctx.fillStyle = isKeyPlaying ? '#091114' : pc === 0 ? '#eef1f6' : '#7b8396';
         ctx.font =
           isKeyPlaying || pc === 0
             ? '600 10px "JetBrains Mono", monospace'
             : '400 9px "JetBrains Mono", monospace';
-        ctx.fillText(midiToNoteName(pitch), 8, y + rowHeight - 6);
+        ctx.fillText(midiToNoteName(pitch), 8, y + rowHeight - Math.max(2, Math.floor((rowHeight - 9) / 2)));
       }
     }
 
