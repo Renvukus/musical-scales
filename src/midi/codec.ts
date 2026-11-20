@@ -42,7 +42,7 @@ export function importMidiToComposition(
   fallbackTitle = 'Imported MIDI',
 ): Composition {
   const midi = new Midi(data);
-  const tempo = Math.round(midi.header.tempos[0]?.bpm ?? 110);
+  const tempo = Math.round(midi.header.tempos[0]?.bpm ?? 140);
   const tsRaw = midi.header.timeSignatures[0]?.timeSignature ?? [4, 4];
   const numerator = tsRaw[0] || 4;
   const denominator = tsRaw[1] || 4;

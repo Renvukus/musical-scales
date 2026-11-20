@@ -33,7 +33,7 @@ export const PRESETS: CompositionPreset[] = [
     subtitle: 'Classic pop progression + melody with a passing tone',
     composition: {
       title: 'C Major — I · V · vi · IV',
-      tempo: 108,
+      tempo: 140,
       timeSignature: { numerator: 4, denominator: 4 },
       totalBeats: 16,
       sections: makeFourBarSections(),
@@ -143,7 +143,7 @@ export const PRESETS: CompositionPreset[] = [
     subtitle: 'Start composing from scratch',
     composition: {
       title: 'Untitled Sketch',
-      tempo: 110,
+      tempo: 140,
       timeSignature: { numerator: 4, denominator: 4 },
       totalBeats: 16,
       sections: makeFourBarSections(),

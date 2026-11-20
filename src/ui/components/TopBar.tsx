@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { SynthPatch } from '../../audio';
 import { SNAP_OPTIONS, type SnapGrid } from '../../domain/music';
 import { PRESETS } from '../../state/presets';
@@ -54,6 +54,22 @@ export const TopBar: React.FC<TopBarProps> = ({
   onExportMidi,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [tempoDraft, setTempoDraft] = useState(String(tempo));
+
+  useEffect(() => {
+    setTempoDraft(String(tempo));
+  }, [tempo]);
+
+  const commitTempo = () => {
+    const parsed = Number(tempoDraft);
+    if (!Number.isFinite(parsed) || tempoDraft.trim() === '') {
+      setTempoDraft(String(tempo));
+      return;
+    }
+    const clamped = Math.max(40, Math.min(240, Math.round(parsed)));
+    setTempoDraft(String(clamped));
+    if (clamped !== tempo) onTempoChange(clamped);
+  };
 
   return (
     <header className="topbar">
@@ -101,8 +117,25 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="number"
             min={40}
             max={240}
-            value={tempo}
-            onChange={(e) => onTempoChange(Number(e.target.value) || 110)}
+            value={tempoDraft}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setTempoDraft(raw);
+              const parsed = Number(raw);
+              if (raw.trim() !== '' && Number.isFinite(parsed) && parsed >= 40 && parsed <= 240) {
+                onTempoChange(Math.round(parsed));
+              }
+            }}
+            onBlur={commitTempo}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                commitTempo();
+                e.currentTarget.blur();
+              } else if (e.key === 'Escape') {
+                setTempoDraft(String(tempo));
+                e.currentTarget.blur();
+              }
+            }}
           />
         </label>
 
