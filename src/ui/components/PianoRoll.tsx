@@ -450,12 +450,36 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       return;
     }
 
-    // 1. Clicking piano keyboard gutter -> preview pitch
-    if (x < KEY_WIDTH && y >= RULER_HEIGHT) {
-      const pitch = yToPitch(y);
-      if (pitch >= MIN_PITCH && pitch <= MAX_PITCH) {
-        audioEngine.playNote(pitch, 0.45, 0.8);
+    // 1. Clicking or dragging on piano keyboard gutter -> preview pitches (glissando)
+    if (x < KEY_WIDTH && y >= RULER_HEIGHT && e.button === 0) {
+      let lastPitch = yToPitch(y);
+      if (lastPitch >= MIN_PITCH && lastPitch <= MAX_PITCH) {
+        audioEngine.playNote(lastPitch, 0.45, 0.8);
       }
+
+      const onKeyMove = (ev: MouseEvent) => {
+        const curRect = canvas.getBoundingClientRect();
+        const localY = ev.clientY - curRect.top;
+        const cur = latestRef.current;
+        const nextPitch =
+          MAX_PITCH - Math.floor((localY - RULER_HEIGHT + cur.scrollY) / cur.rowHeight);
+        if (
+          nextPitch !== lastPitch &&
+          nextPitch >= MIN_PITCH &&
+          nextPitch <= MAX_PITCH
+        ) {
+          lastPitch = nextPitch;
+          audioEngine.playNote(nextPitch, 0.42, 0.8);
+        }
+      };
+
+      const onKeyUp = () => {
+        window.removeEventListener('mousemove', onKeyMove);
+        window.removeEventListener('mouseup', onKeyUp);
+      };
+
+      window.addEventListener('mousemove', onKeyMove);
+      window.addEventListener('mouseup', onKeyUp);
       return;
     }
 
