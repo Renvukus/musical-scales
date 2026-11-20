@@ -825,3 +825,74 @@ select option {
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* Phase 2: Circle of Fifths, Progression Map, Interval Banner, Inversions */
+.cof-container {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 6px;
+}
+
+.cof-svg {
+  width: 244px;
+  height: 244px;
+  user-select: none;
+}
+
+.progression-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.progression-step {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.progression-step:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-medium);
+}
+
+.progression-step.is-active {
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+}
+
+.progression-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.interval-banner {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border-left: 3px solid var(--fn-chromatic);
+}
+
+.interval-banner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.inversion-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inversion-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}

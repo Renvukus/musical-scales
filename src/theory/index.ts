@@ -10,6 +10,8 @@ export * from './scaleAnalyzer';
 export * from './chordAnalyzer';
 export * from './progressionAnalyzer';
 export * from './sectionSegmenter';
+export * from './voiceLeading';
+export * from './intervals';
 
 /**
  * Runs complete global scale + per-section chord & progression analysis.

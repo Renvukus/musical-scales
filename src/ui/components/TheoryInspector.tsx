@@ -1,12 +1,20 @@
 import React from 'react';
 import { audioEngine } from '../../audio';
 import type { ChordCandidate, ScaleCandidate } from '../../domain/theory';
-import { FLAT_NAMES, SHARP_NAMES, intervalName } from '../../theory';
+import {
+  FLAT_NAMES,
+  SHARP_NAMES,
+  buildChordVoicing,
+  intervalName,
+  type IntervalAnalysis,
+} from '../../theory';
 
 interface TheoryInspectorProps {
   chord?: ChordCandidate;
   scale?: ScaleCandidate;
+  selectedInterval?: IntervalAnalysis | null;
   mode: 'chord' | 'scale';
+  onInsertInversion?: (chord: ChordCandidate, inversion: number) => void;
 }
 
 function symbolToPreviewPitches(symbol: string): number[] {
@@ -29,14 +37,52 @@ const FUNCTION_LABELS = {
   chromatic: 'Chromatic / Borrowed Color',
 } as const;
 
+const INVERSION_LABELS = ['Root', '1st Inv', '2nd Inv'] as const;
+
 export const TheoryInspector: React.FC<TheoryInspectorProps> = ({
   chord,
   scale,
+  selectedInterval,
   mode,
+  onInsertInversion,
 }) => {
+  const intervalBanner = selectedInterval ? (
+    <div className="interval-banner">
+      <div className="interval-banner-head">
+        <span>
+          <strong style={{ color: 'var(--fn-chromatic)' }}>{selectedInterval.name}</strong>{' '}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--text-muted)' }}>
+            {selectedInterval.lowName}→{selectedInterval.highName} ({selectedInterval.semitones}st)
+          </span>
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <span className="pill pill-muted">{selectedInterval.consonance}</span>
+          <button
+            className="btn btn-sm"
+            style={{ height: '20px', padding: '0 6px' }}
+            onClick={() =>
+              audioEngine.playChord(
+                [selectedInterval.lowPitch, selectedInterval.highPitch],
+                0.85,
+                0.76,
+              )
+            }
+            title="Hear selected interval"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+        {selectedInterval.description}
+      </div>
+    </div>
+  ) : null;
+
   if (mode === 'scale' && scale) {
     return (
       <section className="theory-inspector" aria-label="Scale Theory Inspector">
+        {intervalBanner}
         <div className="inspector-header">
           <h2 className="inspector-title">{scale.displayName}</h2>
           <span className="pill pill-muted">{scale.definition.name}</span>
@@ -85,6 +131,7 @@ export const TheoryInspector: React.FC<TheoryInspectorProps> = ({
   if (!chord) {
     return (
       <section className="theory-inspector" aria-label="Theory Inspector">
+        {intervalBanner}
         <p style={{ margin: 0, color: 'var(--text-muted)' }}>
           Click any chord or scale above to see how it works in your composition.
         </p>
@@ -96,6 +143,7 @@ export const TheoryInspector: React.FC<TheoryInspectorProps> = ({
 
   return (
     <section className="theory-inspector" aria-label="Chord Theory Inspector">
+      {intervalBanner}
       <div className="inspector-header">
         <h2 className="inspector-title">
           {chord.symbol}{' '}
@@ -109,6 +157,46 @@ export const TheoryInspector: React.FC<TheoryInspectorProps> = ({
       </div>
 
       <p className="inspector-summary">{chord.summary}</p>
+
+      {/* Inversion & Voicing Explorer */}
+      <div className="inversion-row">
+        <span className="inspector-label" style={{ fontSize: '11px' }}>Voicings</span>
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+          {INVERSION_LABELS.map((label, invIdx) => {
+            const pitches = buildChordVoicing(
+              chord.rootPc,
+              chord.definition.intervals,
+              invIdx,
+              3,
+            );
+            return (
+              <div key={label} className="inversion-group">
+                <button
+                  className="btn btn-sm"
+                  style={{ height: '22px', padding: '0 7px' }}
+                  onClick={() => audioEngine.playChord(pitches, 0.9, 0.75)}
+                  title={`Audition ${chord.symbol} (${label})`}
+                >
+                  ▶ {label}
+                </button>
+                {onInsertInversion && (
+                  <button
+                    className="btn btn-sm"
+                    style={{ height: '22px', padding: '0 5px' }}
+                    onClick={() => {
+                      audioEngine.playChord(pitches, 0.85, 0.74);
+                      onInsertInversion(chord, invIdx);
+                    }}
+                    title={`Insert ${chord.symbol} (${label}) into active section`}
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="inspector-grid">
         <span className="inspector-label">Function</span>

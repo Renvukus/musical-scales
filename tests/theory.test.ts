@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Composition, Note } from '../src/domain/music';
 import { PRESETS } from '../src/state/presets';
-import { analyzeComposition, analyzeSection, rankScales, resolveSectionChord } from '../src/theory';
+import {
+  analyzeComposition,
+  analyzeSection,
+  analyzeSelectedInterval,
+  analyzeVoiceLeading,
+  buildChordVoicing,
+  rankScales,
+  resolveSectionChord,
+} from '../src/theory';
 
 function n(pitch: number, start: number, duration = 4, velocity = 0.8): Note {
   return { id: `t-${pitch}-${start}`, pitch, start, duration, velocity };
@@ -136,5 +144,37 @@ describe('Harmonic Analysis Engine', () => {
     const resolved7 = resolveSectionChord(seventhSec, result.sections['s1']);
     expect(resolved7?.harmonicFunction).toBe('dominant');
     expect(resolved7?.quality).toMatch(/7|m7b5/);
+  });
+
+  it('builds root, 1st, and 2nd inversion voicings accurately', () => {
+    const root = buildChordVoicing(0, [0, 4, 7], 0, 3); // C3, E3, G3
+    const first = buildChordVoicing(0, [0, 4, 7], 1, 3); // E3, G3, C4
+    const second = buildChordVoicing(0, [0, 4, 7], 2, 3); // G3, C4, E4
+    expect(root).toEqual([48, 52, 55]);
+    expect(first).toEqual([52, 55, 60]);
+    expect(second).toEqual([55, 60, 64]);
+  });
+
+  it('analyzes smooth voice leading between C major and F major (shared C, stepwise E->F and G->A)', () => {
+    const pop = PRESETS.find((p) => p.id === 'pop-progression')!.composition;
+    const result = analyzeComposition(pop);
+    const cChord = result.sections['sec-1'].candidates.find((c) => c.id === '0:maj')!;
+    const fChord = result.sections['sec-4'].candidates.find((c) => c.id === '5:maj')!;
+    const vl = analyzeVoiceLeading(cChord, fChord);
+
+    expect(vl.commonTones).toBeGreaterThanOrEqual(1);
+    expect(vl.smoothness).toBeGreaterThanOrEqual(75);
+    expect(vl.moves.length).toBe(3);
+  });
+
+  it('identifies intervals and consonance for selected notes', () => {
+    const maj3 = analyzeSelectedInterval([n(60, 0, 1), n(64, 0, 1)]);
+    expect(maj3?.name).toContain('Major 3rd');
+    expect(maj3?.semitones).toBe(4);
+    expect(maj3?.consonance).toBe('Warm Consonance');
+
+    const tritone = analyzeSelectedInterval([n(60, 0, 1), n(66, 0, 1)]);
+    expect(tritone?.name).toContain('Tritone');
+    expect(tritone?.consonance).toBe('Sharp Dissonance');
   });
 });

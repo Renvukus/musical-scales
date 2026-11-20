@@ -22,6 +22,7 @@ interface SectionTimelineProps {
     commit: boolean,
   ) => void;
   onClearSections: () => void;
+  onAutoSegment: () => void;
 }
 
 export const SectionTimeline: React.FC<SectionTimelineProps> = ({
@@ -36,6 +37,7 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
   onSplitSection,
   onMoveBoundary,
   onClearSections,
+  onAutoSegment,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const sorted = [...sections].sort((a, b) => a.start - b.start);
@@ -94,12 +96,20 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
         className="section-timeline-gutter"
         title="Click a chord's left edge to select (Del/X to delete) or drag to move; right-click or double-click to split at the current snap"
       >
-        <span>Chords</span>
+        <button
+          id="btn-auto-chords"
+          className="btn btn-sm"
+          style={{ height: '19px', width: '50px', padding: '0 4px', fontSize: '9.5px', textTransform: 'none', letterSpacing: 'normal' }}
+          onClick={onAutoSegment}
+          title="Auto-detect chord section boundaries from your notes (Ctrl+Z to undo)"
+        >
+          Auto
+        </button>
         <button
           id="btn-clear-chords"
           className="btn btn-sm"
-          style={{ height: '18px', padding: '0 6px', fontSize: '9.5px', textTransform: 'none', letterSpacing: 'normal' }}
-          disabled={sorted.length <= 1 && !sorted[0]?.selectedChordId}
+          style={{ height: '19px', width: '50px', padding: '0 4px', fontSize: '9.5px', textTransform: 'none', letterSpacing: 'normal' }}
+          disabled={sorted.length <= 1 && !sorted[0]?.selectedChordId && !sorted[0]?.chordConstraint}
           onClick={onClearSections}
           title="Clear all chord splits and pinned chords (Ctrl+Z to undo)"
         >

@@ -1,5 +1,6 @@
 import type { Composition, Note, Section } from '../domain/music';
 import type { ChordConstraint, PitchClass } from '../domain/theory';
+import { buildChordVoicing, suggestInitialSections } from '../theory';
 import {
   createHistory,
   pushHistory,
@@ -28,7 +29,8 @@ export type CompositionAction =
   | { type: 'MOVE_SECTION_BOUNDARY'; leftSectionId: string; rightSectionId: string; beat: number; snap?: number; commit?: boolean }
   | { type: 'DELETE_SECTION'; sectionId: string }
   | { type: 'CLEAR_SECTIONS' }
-  | { type: 'INSERT_CHORD_IN_SECTION'; sectionId: string; pitchClasses: PitchClass[]; octave?: number; replaceExisting?: boolean }
+  | { type: 'AUTO_SEGMENT_SECTIONS' }
+  | { type: 'INSERT_CHORD_IN_SECTION'; sectionId: string; pitchClasses: PitchClass[]; intervals?: number[]; inversion?: number; octave?: number; replaceExisting?: boolean }
   | { type: 'UNDO' }
   | { type: 'REDO' };
 
@@ -257,6 +259,22 @@ export function compositionReducer(
       return pushHistory(state, { ...comp, sections: fresh });
     }
 
+    case 'AUTO_SEGMENT_SECTIONS': {
+      const beatsPerBar =
+        comp.timeSignature.numerator * (4 / comp.timeSignature.denominator);
+      const maxEnd = comp.notes.reduce(
+        (m, n) => Math.max(m, n.start + n.duration),
+        comp.totalBeats,
+      );
+      const bars = Math.max(4, Math.ceil(maxEnd / beatsPerBar));
+      const sections = suggestInitialSections(
+        comp.notes,
+        comp.timeSignature,
+        bars,
+      );
+      return pushHistory(state, { ...comp, sections });
+    }
+
     case 'INSERT_CHORD_IN_SECTION': {
       const section = comp.sections.find((s) => s.id === action.sectionId);
       if (!section || action.pitchClasses.length === 0) return state;
@@ -267,17 +285,22 @@ export function compositionReducer(
         : beatsPerBar;
       const baseOctave = action.octave ?? 3; // C3..B3 range
       const rootPc = action.pitchClasses[0];
-      const baseMidi = (baseOctave + 1) * 12 + rootPc;
-      const chordNotes: Note[] = action.pitchClasses.map((pc, idx) => {
-        const semitonesAboveRoot = (((pc - rootPc) % 12) + 12) % 12;
-        return {
-          id: uid(`ch-${idx}`),
-          pitch: baseMidi + semitonesAboveRoot,
-          start: section.start,
-          duration: sectionLen,
-          velocity: idx === 0 ? 0.76 : 0.68,
-        };
-      });
+      const intervals =
+        action.intervals ??
+        action.pitchClasses.map((pc) => (((pc - rootPc) % 12) + 12) % 12);
+      const voicedPitches = buildChordVoicing(
+        rootPc,
+        intervals,
+        action.inversion ?? 0,
+        baseOctave,
+      );
+      const chordNotes: Note[] = voicedPitches.map((pitch, idx) => ({
+        id: uid(`ch-${idx}`),
+        pitch,
+        start: section.start,
+        duration: sectionLen,
+        velocity: idx === 0 ? 0.76 : 0.68,
+      }));
 
       const keptNotes = action.replaceExisting
         ? comp.notes.filter(

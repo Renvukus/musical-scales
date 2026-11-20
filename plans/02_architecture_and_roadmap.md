@@ -92,13 +92,13 @@ Colors communicate harmonic meaning consistently across the piano roll, section 
 - [x] `.mid` file import, export, and drag-and-drop (LMMS / Reaper interoperability)
 - [x] Automated tests for theory analysis and MIDI round-tripping
 
-### Phase 2 — Deeper Visual Theory & Voice Leading (Planned)
-- [ ] Interactive **Circle of Fifths** widget synced to the active key and highlighting borrowed-chord neighbors
-- [ ] **Voice-Leading Overlay** on the piano roll (lines showing common tones and stepwise motion between adjacent sections)
-- [ ] **Chord Relationship Map** (interactive graph of closely related & next-chord transitions)
-- [ ] **Interval Inspector** when 2+ notes are selected on the piano roll
-- [ ] **Inversion & Voicing Explorer** (one-click root/1st/2nd inversion audition and insertion)
-- [ ] **Auto-Section Suggestion** button detecting likely harmonic boundaries from note changes
+### Phase 2 — Deeper Visual Theory & Voice Leading (Implemented)
+- [x] Interactive **Circle of Fifths** widget synced to the active key and highlighting borrowed-chord neighbors
+- [x] **Voice-Leading Overlay** on the piano roll (lines showing common tones and stepwise motion between adjacent sections)
+- [x] **Chord Relationship Map** (interactive graph of closely related & next-chord transitions)
+- [x] **Interval Inspector** when 2+ notes are selected on the piano roll
+- [x] **Inversion & Voicing Explorer** (one-click root/1st/2nd inversion audition and insertion)
+- [x] **Auto-Section Suggestion** button detecting likely harmonic boundaries from note changes
 
 ### Phase 3 — Advanced Analysis & Production Polish (Planned)
 - [ ] Configurable scoring weight profiles (Pop/Diatonic, Jazz/Extended, Modal/Experimental)

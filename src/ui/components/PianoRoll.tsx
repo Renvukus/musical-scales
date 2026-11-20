@@ -7,7 +7,13 @@ import type {
   CompositionAnalysis,
   HarmonicFunction,
 } from '../../domain/theory';
-import { isBlackKey, midiToNoteName, resolveSectionChord, toPitchClass } from '../../theory';
+import {
+  analyzeVoiceLeading,
+  isBlackKey,
+  midiToNoteName,
+  resolveSectionChord,
+  toPitchClass,
+} from '../../theory';
 
 interface PianoRollProps {
   composition: Composition;
@@ -25,6 +31,7 @@ interface PianoRollProps {
   onSeek: (beat: number) => void;
   onSelectSection: (sectionId: string) => void;
   onFocusNotes: () => void;
+  onSelectionChange?: (noteIds: string[]) => void;
   onAddNote: (note: Note) => void;
   onAddNotes: (notes: Note[]) => void;
   onPatchNotes: (
@@ -109,6 +116,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   onSeek,
   onSelectSection,
   onFocusNotes,
+  onSelectionChange,
   onAddNote,
   onAddNotes,
   onPatchNotes,
@@ -127,6 +135,10 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   const dragRef = useRef<DragMode>({ type: 'none' });
   const isPanningRef = useRef(false);
   const [, forceRender] = useState(0);
+
+  useEffect(() => {
+    onSelectionChange?.(Array.from(selectedIds));
+  }, [selectedIds, onSelectionChange]);
 
   // Subscribe to currently sounding pitches (both manual audition & playback)
   useEffect(() => {
@@ -887,6 +899,55 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
           ctx.stroke();
           ctx.restore();
         }
+      }
+    }
+
+    // 2b. Voice-Leading Connection Lines across chord transitions (when Guides are On)
+    if (showGuides && pixelsPerBeat >= 20) {
+      const sortedSecs = [...composition.sections].sort((a, b) => a.start - b.start);
+      const spanPx = Math.min(28, Math.max(10, pixelsPerBeat * 0.35));
+      for (let i = 1; i < sortedSecs.length; i++) {
+        const prevSec = sortedSecs[i - 1];
+        const nextSec = sortedSecs[i];
+        const bx = beatToX(nextSec.start);
+        if (bx + spanPx < KEY_WIDTH || bx - spanPx > width) continue;
+        const prevChord = getSectionChord(prevSec.id);
+        const nextChord = getSectionChord(nextSec.id);
+        if (!prevChord || !nextChord) continue;
+
+        const vl = analyzeVoiceLeading(prevChord, nextChord);
+        ctx.save();
+        ctx.lineWidth = 1.6;
+        for (const move of vl.moves) {
+          const y1 = pitchToY(move.fromPitch) + rowHeight / 2;
+          const y2 = pitchToY(move.toPitch) + rowHeight / 2;
+          if (
+            (y1 < RULER_HEIGHT && y2 < RULER_HEIGHT) ||
+            (y1 > height && y2 > height)
+          ) {
+            continue;
+          }
+          const x1 = Math.max(KEY_WIDTH, bx - spanPx);
+          const x2 = Math.min(width, bx + spanPx);
+          ctx.strokeStyle =
+            move.kind === 'common'
+              ? 'rgba(52, 211, 153, 0.52)'
+              : move.kind === 'step'
+                ? 'rgba(56, 189, 248, 0.52)'
+                : 'rgba(245, 158, 11, 0.35)';
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.bezierCurveTo(bx, y1, bx, y2, x2, y2);
+          ctx.stroke();
+
+          // Small endpoint dots
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.beginPath();
+          ctx.arc(x1, y1, 2.2, 0, Math.PI * 2);
+          ctx.arc(x2, y2, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
     }
 

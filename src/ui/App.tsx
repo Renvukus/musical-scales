@@ -10,8 +10,13 @@ import {
   saveProjectAsFile,
 } from '../state/persistence';
 import { PRESETS } from '../state/presets';
-import { analyzeComposition, resolveSectionChord } from '../theory';
+import {
+  analyzeComposition,
+  analyzeSelectedInterval,
+  resolveSectionChord,
+} from '../theory';
 import { ChordExplorer } from './components/ChordExplorer';
+import { HarmonyMap } from './components/HarmonyMap';
 import { PianoRoll } from './components/PianoRoll';
 import { ScaleExplorer } from './components/ScaleExplorer';
 import { SectionTimeline } from './components/SectionTimeline';
@@ -27,7 +32,8 @@ export const App: React.FC = () => {
     () => composition.sections[0]?.id ?? 'sec-1',
   );
   const [sectionFocused, setSectionFocused] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<'chords' | 'scales'>('chords');
+  const [sidebarTab, setSidebarTab] = useState<'chords' | 'scales' | 'map'>('chords');
+  const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [snap, setSnap] = useState<SnapGrid>(0.5);
   const [patch, setPatch] = useState<SynthPatch>('epiano');
   const [showGuides, setShowGuides] = useState(true);
@@ -70,6 +76,13 @@ export const App: React.FC = () => {
   }, [activeSection, activeSectionAnalysis, hoveredChord, inspectedChord]);
 
   const displayedScale = hoveredScale ?? inspectedScale ?? analysis.activeScale;
+
+  const selectedInterval = useMemo(() => {
+    if (selectedNoteIds.length < 2) return null;
+    const idSet = new Set(selectedNoteIds);
+    const chosen = composition.notes.filter((n) => idSet.has(n.id));
+    return analyzeSelectedInterval(chosen);
+  }, [selectedNoteIds, composition.notes]);
 
   // Auto-play each chord section whenever playback enters a new section (if Chord Preview is On)
   useEffect(() => {
@@ -387,6 +400,10 @@ export const App: React.FC = () => {
                 commit,
               })
             }
+            onAutoSegment={() => {
+              dispatch({ type: 'AUTO_SEGMENT_SECTIONS' });
+              setInspectedChord(undefined);
+            }}
             onClearSections={() => {
               dispatch({ type: 'CLEAR_SECTIONS' });
               setActiveSectionId('sec-1');
@@ -418,6 +435,7 @@ export const App: React.FC = () => {
               setInspectedChord(undefined);
             }}
             onFocusNotes={() => setSectionFocused(false)}
+            onSelectionChange={setSelectedNoteIds}
             onAddNote={(note) => {
               setInspectedChord(undefined);
               dispatch({ type: 'ADD_NOTE', note });
@@ -518,7 +536,7 @@ export const App: React.FC = () => {
               className={`sidebar-tab ${sidebarTab === 'chords' ? 'is-active' : ''}`}
               onClick={() => setSidebarTab('chords')}
             >
-              Section Chords
+              Chords
             </button>
             <button
               role="tab"
@@ -526,7 +544,15 @@ export const App: React.FC = () => {
               className={`sidebar-tab ${sidebarTab === 'scales' ? 'is-active' : ''}`}
               onClick={() => setSidebarTab('scales')}
             >
-              Global Scales
+              Scales
+            </button>
+            <button
+              role="tab"
+              aria-selected={sidebarTab === 'map'}
+              className={`sidebar-tab ${sidebarTab === 'map' ? 'is-active' : ''}`}
+              onClick={() => setSidebarTab('map')}
+            >
+              Theory Map
             </button>
           </div>
 
@@ -547,6 +573,7 @@ export const App: React.FC = () => {
                   type: 'INSERT_CHORD_IN_SECTION',
                   sectionId,
                   pitchClasses: chord.pitchClasses,
+                  intervals: chord.definition.intervals,
                 });
                 const baseMidi = 48 + chord.rootPc;
                 audioEngine.playChord(
@@ -556,7 +583,7 @@ export const App: React.FC = () => {
                 );
               }}
             />
-          ) : (
+          ) : sidebarTab === 'scales' ? (
             <ScaleExplorer
               scales={analysis.scales}
               selectedScaleId={composition.selectedScaleId}
@@ -565,12 +592,44 @@ export const App: React.FC = () => {
               onInspectScale={(scale) => setInspectedScale(scale)}
               onHoverScale={setHoveredScale}
             />
+          ) : (
+            <HarmonyMap
+              composition={composition}
+              analysis={analysis}
+              activeSectionId={activeSection?.id ?? ''}
+              onSelectSection={(id) => {
+                setActiveSectionId(id);
+                setInspectedChord(undefined);
+              }}
+              onPinChordInActiveSection={(chordId) => {
+                if (!activeSection) return;
+                dispatch({
+                  type: 'SELECT_SECTION_CHORD',
+                  sectionId: activeSection.id,
+                  chordId,
+                });
+              }}
+              onHoverChord={setHoveredChord}
+            />
           )}
 
           <TheoryInspector
             mode={sidebarTab === 'scales' ? 'scale' : 'chord'}
             chord={displayedChord}
             scale={displayedScale}
+            selectedInterval={selectedInterval}
+            onInsertInversion={
+              activeSection
+                ? (chord, inversion) =>
+                    dispatch({
+                      type: 'INSERT_CHORD_IN_SECTION',
+                      sectionId: activeSection.id,
+                      pitchClasses: chord.pitchClasses,
+                      intervals: chord.definition.intervals,
+                      inversion,
+                    })
+                : undefined
+            }
           />
         </aside>
       </main>
