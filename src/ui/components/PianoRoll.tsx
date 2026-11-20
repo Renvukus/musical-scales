@@ -90,6 +90,7 @@ type DragMode =
       startY: number;
       currX: number;
       currY: number;
+      additive: boolean;
     };
 
 export const PianoRoll: React.FC<PianoRollProps> = ({
@@ -575,7 +576,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
           onDeleteNotes([hit.note.id]);
         }
       } else {
-        dragRef.current = { type: 'box', startX: x, startY: y, currX: x, currY: y };
+        dragRef.current = {
+          type: 'box',
+          startX: x,
+          startY: y,
+          currX: x,
+          currY: y,
+          additive: e.shiftKey,
+        };
         forceRender((v) => v + 1);
       }
       return;
@@ -585,7 +593,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
     // 4. Ctrl+Drag on empty space -> marquee box selection (LMMS style)
     if (!hit && (e.ctrlKey || e.metaKey)) {
-      dragRef.current = { type: 'box', startX: x, startY: y, currX: x, currY: y };
+      dragRef.current = {
+        type: 'box',
+        startX: x,
+        startY: y,
+        currX: x,
+        currY: y,
+        additive: e.shiftKey,
+      };
       forceRender((v) => v + 1);
       return;
     }
@@ -745,7 +760,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     }
   };
 
-  const finishDrag = () => {
+  const finishDrag = (e?: React.MouseEvent<HTMLCanvasElement>) => {
     const drag = dragRef.current;
     if (drag.type === 'none') return;
 
@@ -754,7 +769,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const maxX = Math.max(drag.startX, drag.currX);
       const minY = Math.min(drag.startY, drag.currY);
       const maxY = Math.max(drag.startY, drag.currY);
-      const nextSel = new Set<string>();
+      const nextSel =
+        drag.additive || e?.shiftKey ? new Set(selectedIds) : new Set<string>();
       for (const n of composition.notes) {
         const nx = beatToX(n.start);
         const nw = n.duration * pixelsPerBeat;
