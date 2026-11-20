@@ -9,6 +9,7 @@ export * from './weighting';
 export * from './scaleAnalyzer';
 export * from './chordAnalyzer';
 export * from './progressionAnalyzer';
+export * from './sectionSegmenter';
 
 /**
  * Runs complete global scale + per-section chord & progression analysis.

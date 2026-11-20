@@ -1,5 +1,6 @@
 import { Midi } from '@tonejs/midi';
-import type { Composition, Note, Section } from '../domain/music';
+import type { Composition, Note } from '../domain/music';
+import { suggestInitialSections } from '../theory';
 
 /**
  * Serializes a Composition into a Standard MIDI File (.mid) byte array
@@ -69,15 +70,12 @@ export function importMidiToComposition(
   const bars = Math.max(4, Math.ceil(maxEndBeat / numerator));
   const totalBeats = bars * numerator;
 
-  // Create default 1-bar chord sections (last section extends to end of time)
-  const sections: Section[] = [];
-  for (let b = 0; b < bars; b++) {
-    sections.push({
-      id: `sec-${b + 1}`,
-      start: b * numerator,
-      end: b === bars - 1 ? Infinity : (b + 1) * numerator,
-    });
-  }
+  // Smart bar-level chord segmentation (merges consecutive bars that form a cohesive chord)
+  const sections = suggestInitialSections(
+    notes,
+    { numerator, denominator },
+    bars,
+  );
 
   return {
     title: midi.name || fallbackTitle.replace(/\.mid$/i, ''),
