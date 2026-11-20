@@ -70,7 +70,7 @@ export class WebAudioEngine implements AudioEngine {
 
     const freq = midiToFreq(pitch);
     const dur = Math.max(0.06, durationSec);
-    const peakGain = Math.max(0.04, Math.min(0.45, velocity * 0.34));
+    const peakGain = Math.max(0.04, Math.min(0.42, velocity * 0.32));
 
     if (this.patch === 'triangle') {
       const osc = ctx.createOscillator();
@@ -78,25 +78,41 @@ export class WebAudioEngine implements AudioEngine {
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, when);
 
-      gain.gain.setValueAtTime(0.0001, when);
-      gain.gain.linearRampToValueAtTime(peakGain, when + 0.012);
-      gain.gain.exponentialRampToValueAtTime(peakGain * 0.65, when + Math.min(0.2, dur));
-      gain.gain.setValueAtTime(peakGain * 0.65, when + Math.max(0.02, dur - 0.05));
-      gain.gain.exponentialRampToValueAtTime(0.0001, when + dur + 0.08);
+      const tAttack = when + 0.012;
+      const tReleaseStart = when + dur;
+      const tDecay = Math.min(tAttack + 0.16, tReleaseStart);
+      const sustainGain = peakGain * 0.62;
+      const tReleaseEnd = tReleaseStart + 0.09;
+
+      gain.gain.setValueAtTime(0, when);
+      gain.gain.linearRampToValueAtTime(peakGain, tAttack);
+      if (tDecay > tAttack + 0.005) {
+        gain.gain.linearRampToValueAtTime(sustainGain, tDecay);
+        if (tReleaseStart > tDecay + 0.005) {
+          gain.gain.setValueAtTime(sustainGain, tReleaseStart);
+        }
+      }
+      gain.gain.linearRampToValueAtTime(0, tReleaseEnd);
 
       osc.connect(gain);
       gain.connect(this.masterGain);
       osc.start(when);
-      osc.stop(when + dur + 0.1);
+      osc.stop(tReleaseEnd + 0.03);
       return;
     }
 
-    // Warm electric-piano patch: fundamental sine + soft 2nd harmonic + gentle bell attack
+    // Warm electric-piano patch: fundamental sine + soft 2nd harmonic + smooth pop-free ADSR
     const fund = ctx.createOscillator();
     const over = ctx.createOscillator();
     const filter = ctx.createBiquadFilter();
     const amp = ctx.createGain();
     const overGain = ctx.createGain();
+
+    const tAttack = when + 0.01;
+    const tReleaseStart = when + dur;
+    const tDecay = Math.min(tAttack + 0.38, tReleaseStart);
+    const sustainGain = peakGain * 0.45;
+    const tReleaseEnd = tReleaseStart + 0.14;
 
     fund.type = 'sine';
     fund.frequency.setValueAtTime(freq, when);
@@ -104,27 +120,26 @@ export class WebAudioEngine implements AudioEngine {
     over.type = 'triangle';
     over.frequency.setValueAtTime(freq * 2, when);
 
-    overGain.gain.setValueAtTime(0.22, when);
-    overGain.gain.exponentialRampToValueAtTime(0.02, when + Math.min(0.45, dur + 0.15));
+    overGain.gain.setValueAtTime(0.2, when);
+    overGain.gain.exponentialRampToValueAtTime(0.015, tReleaseEnd);
 
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(Math.min(5500, freq * 6), when);
+    filter.frequency.setValueAtTime(Math.min(5200, freq * 5.5), when);
     filter.frequency.exponentialRampToValueAtTime(
-      Math.min(2200, freq * 2.5),
-      when + Math.min(0.6, dur + 0.2),
+      Math.min(2000, freq * 2.4),
+      tReleaseEnd,
     );
 
-    amp.gain.setValueAtTime(0.0001, when);
-    amp.gain.linearRampToValueAtTime(peakGain, when + 0.008);
-    amp.gain.exponentialRampToValueAtTime(
-      peakGain * 0.48,
-      when + Math.min(0.55, dur + 0.1),
-    );
-    amp.gain.setValueAtTime(
-      Math.max(0.0002, peakGain * 0.38),
-      when + Math.max(0.02, dur - 0.03),
-    );
-    amp.gain.exponentialRampToValueAtTime(0.0001, when + dur + 0.22);
+    amp.gain.setValueAtTime(0, when);
+    amp.gain.linearRampToValueAtTime(peakGain, tAttack);
+    if (tDecay > tAttack + 0.005) {
+      amp.gain.linearRampToValueAtTime(sustainGain, tDecay);
+      if (tReleaseStart > tDecay + 0.005) {
+        amp.gain.setValueAtTime(sustainGain, tReleaseStart);
+      }
+    }
+    // Smooth linear ramp to exact 0 eliminates click/pop when oscillator stops
+    amp.gain.linearRampToValueAtTime(0, tReleaseEnd);
 
     fund.connect(filter);
     over.connect(overGain);
@@ -134,8 +149,8 @@ export class WebAudioEngine implements AudioEngine {
 
     fund.start(when);
     over.start(when);
-    fund.stop(when + dur + 0.25);
-    over.stop(when + dur + 0.25);
+    fund.stop(tReleaseEnd + 0.03);
+    over.stop(tReleaseEnd + 0.03);
   }
 
   playNote(pitch: number, durationSec = 0.45, velocity = 0.8): void {

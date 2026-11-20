@@ -20,7 +20,9 @@ export type CompositionAction =
   | { type: 'SELECT_SCALE'; scaleId?: string }
   | { type: 'SELECT_SECTION_CHORD'; sectionId: string; chordId?: string }
   | { type: 'SPLIT_SECTION'; beat: number }
+  | { type: 'ADD_SECTION_AT'; beat?: number }
   | { type: 'MOVE_SECTION_BOUNDARY'; leftSectionId: string; rightSectionId: string; beat: number; commit?: boolean }
+  | { type: 'RESIZE_LAST_SECTION'; sectionId: string; endBeat: number; commit?: boolean }
   | { type: 'MERGE_SECTION_WITH_PREV'; sectionId: string }
   | { type: 'INSERT_CHORD_IN_SECTION'; sectionId: string; pitchClasses: PitchClass[]; octave?: number; replaceExisting?: boolean }
   | { type: 'UNDO' }
@@ -32,6 +34,18 @@ export function createInitialHistory(): HistoryState<Composition> {
 
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function computeTotalBeats(comp: Composition, notes: Note[], sections: Section[]): number {
+  const beatsPerBar = comp.timeSignature.numerator;
+  let maxEnd = comp.totalBeats;
+  for (const n of notes) {
+    maxEnd = Math.max(maxEnd, n.start + n.duration);
+  }
+  for (const s of sections) {
+    maxEnd = Math.max(maxEnd, s.end);
+  }
+  return Math.max(beatsPerBar * 4, Math.ceil(maxEnd / beatsPerBar) * beatsPerBar);
 }
 
 export function compositionReducer(
@@ -55,17 +69,17 @@ export function compositionReducer(
       return replacePresent(state, { ...comp, tempo });
     }
 
-    case 'ADD_NOTE':
-      return pushHistory(state, {
-        ...comp,
-        notes: [...comp.notes, action.note],
-      });
+    case 'ADD_NOTE': {
+      const notes = [...comp.notes, action.note];
+      const totalBeats = computeTotalBeats(comp, notes, comp.sections);
+      return pushHistory(state, { ...comp, notes, totalBeats });
+    }
 
-    case 'ADD_NOTES':
-      return pushHistory(state, {
-        ...comp,
-        notes: [...comp.notes, ...action.notes],
-      });
+    case 'ADD_NOTES': {
+      const notes = [...comp.notes, ...action.notes];
+      const totalBeats = computeTotalBeats(comp, notes, comp.sections);
+      return pushHistory(state, { ...comp, notes, totalBeats });
+    }
 
     case 'DELETE_NOTES': {
       if (action.ids.length === 0) return state;
@@ -76,7 +90,8 @@ export function compositionReducer(
     }
 
     case 'UPDATE_NOTES': {
-      const next = { ...comp, notes: action.notes };
+      const totalBeats = computeTotalBeats(comp, action.notes, comp.sections);
+      const next = { ...comp, notes: action.notes, totalBeats };
       return action.commit === false
         ? replacePresent(state, next)
         : pushHistory(state, next);
@@ -117,6 +132,37 @@ export function compositionReducer(
       return pushHistory(state, { ...comp, sections });
     }
 
+    case 'ADD_SECTION_AT': {
+      const sorted = [...comp.sections].sort((a, b) => a.start - b.start);
+      const lastEnd = sorted.length > 0 ? sorted[sorted.length - 1].end : 0;
+      const beatsPerBar = comp.timeSignature.numerator;
+
+      // If clicked inside an existing section, split it cleanly
+      if (action.beat !== undefined && action.beat < lastEnd) {
+        const beat = Math.round(action.beat * 2) / 2;
+        const target = sorted.find((s) => beat > s.start + 0.5 && beat < s.end - 0.5);
+        if (!target) return state;
+        const left: Section = { ...target, end: beat };
+        const right: Section = { id: uid('sec'), start: beat, end: target.end };
+        const sections = sorted.flatMap((s) => (s.id === target.id ? [left, right] : [s]));
+        return pushHistory(state, { ...comp, sections });
+      }
+
+      // Otherwise append a new chord section after the last one
+      const targetEnd =
+        action.beat !== undefined
+          ? Math.max(lastEnd + beatsPerBar, Math.ceil(action.beat / beatsPerBar) * beatsPerBar)
+          : lastEnd + beatsPerBar;
+      const newSection: Section = {
+        id: uid('sec'),
+        start: lastEnd,
+        end: targetEnd,
+      };
+      const sections = [...sorted, newSection];
+      const totalBeats = computeTotalBeats(comp, comp.notes, sections);
+      return pushHistory(state, { ...comp, sections, totalBeats });
+    }
+
     case 'MOVE_SECTION_BOUNDARY': {
       const left = comp.sections.find((s) => s.id === action.leftSectionId);
       const right = comp.sections.find((s) => s.id === action.rightSectionId);
@@ -130,6 +176,21 @@ export function compositionReducer(
         return s;
       });
       const next = { ...comp, sections };
+      return action.commit === false
+        ? replacePresent(state, next)
+        : pushHistory(state, next);
+    }
+
+    case 'RESIZE_LAST_SECTION': {
+      const target = comp.sections.find((s) => s.id === action.sectionId);
+      if (!target) return state;
+      const snapped = Math.round(action.endBeat * 2) / 2;
+      const clampedEnd = Math.max(target.start + 0.5, snapped);
+      const sections = comp.sections.map((s) =>
+        s.id === target.id ? { ...s, end: clampedEnd } : s,
+      );
+      const totalBeats = computeTotalBeats(comp, comp.notes, sections);
+      const next = { ...comp, sections, totalBeats };
       return action.commit === false
         ? replacePresent(state, next)
         : pushHistory(state, next);

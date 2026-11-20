@@ -8,6 +8,7 @@ interface ChordExplorerProps {
   sectionAnalysis?: SectionAnalysis;
   onSelectChord: (sectionId: string, chordId?: string) => void;
   onInspectChord: (chord: ChordCandidate) => void;
+  onHoverChord: (chord?: ChordCandidate) => void;
   onInsertChord: (sectionId: string, chord: ChordCandidate) => void;
 }
 
@@ -16,6 +17,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
   sectionAnalysis,
   onSelectChord,
   onInspectChord,
+  onHoverChord,
   onInsertChord,
 }) => {
   if (!section || !sectionAnalysis) {
@@ -39,7 +41,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
   };
 
   return (
-    <div className="explorer-list">
+    <div className="explorer-list" onMouseLeave={() => onHoverChord(undefined)}>
       <div
         style={{
           display: 'flex',
@@ -73,6 +75,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
           <div
             key={chord.id}
             className={`candidate-row ${isActive ? 'is-selected' : ''}`}
+            onMouseEnter={() => onHoverChord(chord)}
             onClick={() => {
               onSelectChord(section.id, isPinned ? undefined : chord.id);
               onInspectChord(chord);

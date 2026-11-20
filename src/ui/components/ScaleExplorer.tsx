@@ -8,6 +8,7 @@ interface ScaleExplorerProps {
   activeScaleId?: string;
   onSelectScale: (scaleId?: string) => void;
   onInspectScale: (scale: ScaleCandidate) => void;
+  onHoverScale: (scale?: ScaleCandidate) => void;
 }
 
 export const ScaleExplorer: React.FC<ScaleExplorerProps> = ({
@@ -16,6 +17,7 @@ export const ScaleExplorer: React.FC<ScaleExplorerProps> = ({
   activeScaleId,
   onSelectScale,
   onInspectScale,
+  onHoverScale,
 }) => {
   const topScales = scales.slice(0, 18);
 
@@ -30,7 +32,7 @@ export const ScaleExplorer: React.FC<ScaleExplorerProps> = ({
   };
 
   return (
-    <div className="explorer-list">
+    <div className="explorer-list" onMouseLeave={() => onHoverScale(undefined)}>
       <div
         style={{
           display: 'flex',
@@ -61,6 +63,7 @@ export const ScaleExplorer: React.FC<ScaleExplorerProps> = ({
           <div
             key={scale.id}
             className={`candidate-row ${isActive ? 'is-selected' : ''}`}
+            onMouseEnter={() => onHoverScale(scale)}
             onClick={() => {
               onSelectScale(isPinned ? undefined : scale.id);
               onInspectScale(scale);

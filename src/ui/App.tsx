@@ -32,7 +32,9 @@ export const App: React.FC = () => {
   const [isDraggingMidi, setIsDraggingMidi] = useState(false);
 
   const [inspectedChord, setInspectedChord] = useState<ChordCandidate | undefined>();
+  const [hoveredChord, setHoveredChord] = useState<ChordCandidate | undefined>();
   const [inspectedScale, setInspectedScale] = useState<ScaleCandidate | undefined>();
+  const [hoveredScale, setHoveredScale] = useState<ScaleCandidate | undefined>();
 
   // Real-time harmonic analysis (pure, memoized)
   const analysis = useMemo(() => analyzeComposition(composition), [composition]);
@@ -46,6 +48,7 @@ export const App: React.FC = () => {
     : undefined;
 
   const displayedChord = useMemo(() => {
+    if (hoveredChord) return hoveredChord;
     if (!activeSection || !activeSectionAnalysis) return undefined;
     if (
       inspectedChord &&
@@ -59,9 +62,9 @@ export const App: React.FC = () => {
       );
     }
     return activeSectionAnalysis.topChord;
-  }, [activeSection, activeSectionAnalysis, inspectedChord]);
+  }, [activeSection, activeSectionAnalysis, hoveredChord, inspectedChord]);
 
-  const displayedScale = inspectedScale ?? analysis.activeScale;
+  const displayedScale = hoveredScale ?? inspectedScale ?? analysis.activeScale;
 
   // Audio playback controls
   const startPlayback = useCallback(
@@ -219,12 +222,21 @@ export const App: React.FC = () => {
               setSidebarTab('chords');
             }}
             onSplitSection={(beat) => dispatch({ type: 'SPLIT_SECTION', beat })}
+            onAddSectionAt={(beat) => dispatch({ type: 'ADD_SECTION_AT', beat })}
             onMoveBoundary={(leftId, rightId, beat, commit) =>
               dispatch({
                 type: 'MOVE_SECTION_BOUNDARY',
                 leftSectionId: leftId,
                 rightSectionId: rightId,
                 beat,
+                commit,
+              })
+            }
+            onResizeLastSection={(sectionId, endBeat, commit) =>
+              dispatch({
+                type: 'RESIZE_LAST_SECTION',
+                sectionId,
+                endBeat,
                 commit,
               })
             }
@@ -266,7 +278,7 @@ export const App: React.FC = () => {
                 <span className="kbd">Click</span> Draw / Move
               </span>
               <span>
-                <span className="kbd">Right-Click</span> Delete
+                <span className="kbd">R-Click / X</span> Delete
               </span>
               <span>
                 <span className="kbd">Ctrl+Drag</span> Box Select
@@ -275,7 +287,7 @@ export const App: React.FC = () => {
                 <span className="kbd">Ctrl+C/V/D</span> Copy / Paste / Dup
               </span>
               <span>
-                <span className="kbd">2× Chord Bar</span> Split Section
+                <span className="kbd">R-Click Chord Bar</span> Add / Split Section
               </span>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -351,6 +363,7 @@ export const App: React.FC = () => {
                 dispatch({ type: 'SELECT_SECTION_CHORD', sectionId, chordId })
               }
               onInspectChord={(chord) => setInspectedChord(chord)}
+              onHoverChord={setHoveredChord}
               onInsertChord={(sectionId, chord) => {
                 dispatch({
                   type: 'INSERT_CHORD_IN_SECTION',
@@ -372,6 +385,7 @@ export const App: React.FC = () => {
               activeScaleId={analysis.activeScale?.id}
               onSelectScale={(scaleId) => dispatch({ type: 'SELECT_SCALE', scaleId })}
               onInspectScale={(scale) => setInspectedScale(scale)}
+              onHoverScale={setHoveredScale}
             />
           )}
 

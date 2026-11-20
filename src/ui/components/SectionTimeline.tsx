@@ -10,12 +10,14 @@ interface SectionTimelineProps {
   scrollX: number;
   onSelectSection: (sectionId: string) => void;
   onSplitSection: (beat: number) => void;
+  onAddSectionAt: (beat?: number) => void;
   onMoveBoundary: (
     leftSectionId: string,
     rightSectionId: string,
     beat: number,
     commit: boolean,
   ) => void;
+  onResizeLastSection: (sectionId: string, endBeat: number, commit: boolean) => void;
   onMergeWithPrev: (sectionId: string) => void;
 }
 
@@ -27,17 +29,34 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
   scrollX,
   onSelectSection,
   onSplitSection,
+  onAddSectionAt,
   onMoveBoundary,
+  onResizeLastSection,
   onMergeWithPrev,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const sorted = [...sections].sort((a, b) => a.start - b.start);
+  const lastSection = sorted[sorted.length - 1];
+
+  const clientXToBeat = (clientX: number) => {
+    if (!trackRef.current) return 0;
+    const rect = trackRef.current.getBoundingClientRect();
+    return Math.max(0, (clientX - rect.left + scrollX) / pixelsPerBeat);
+  };
 
   const handleTrackDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!trackRef.current) return;
-    const rect = trackRef.current.getBoundingClientRect();
-    const beat = (e.clientX - rect.left + scrollX) / pixelsPerBeat;
-    onSplitSection(beat);
+    const beat = clientXToBeat(e.clientX);
+    if (lastSection && beat > lastSection.end) {
+      onAddSectionAt(beat);
+    } else {
+      onSplitSection(beat);
+    }
+  };
+
+  const handleTrackContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const beat = clientXToBeat(e.clientX);
+    onAddSectionAt(beat);
   };
 
   const startBoundaryDrag = (
@@ -47,17 +66,31 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
   ) => {
     e.stopPropagation();
     e.preventDefault();
-    if (!trackRef.current) return;
-    const rect = trackRef.current.getBoundingClientRect();
 
     const onMove = (ev: MouseEvent) => {
-      const beat = (ev.clientX - rect.left + scrollX) / pixelsPerBeat;
-      onMoveBoundary(leftId, rightId, beat, false);
+      onMoveBoundary(leftId, rightId, clientXToBeat(ev.clientX), false);
     };
 
     const onUp = (ev: MouseEvent) => {
-      const beat = (ev.clientX - rect.left + scrollX) / pixelsPerBeat;
-      onMoveBoundary(leftId, rightId, beat, true);
+      onMoveBoundary(leftId, rightId, clientXToBeat(ev.clientX), true);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const startLastEdgeDrag = (e: React.MouseEvent, sectionId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const onMove = (ev: MouseEvent) => {
+      onResizeLastSection(sectionId, clientXToBeat(ev.clientX), false);
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      onResizeLastSection(sectionId, clientXToBeat(ev.clientX), true);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
@@ -70,15 +103,16 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
     <div className="section-timeline">
       <div
         className="section-timeline-gutter"
-        title="Double-click the chord bar to split a section, or drag dividers to resize"
+        title="Right-click or double-click the chord bar to add/split sections, or drag any edge to resize"
       >
         <span>Chords</span>
-        <span style={{ fontSize: '9px', opacity: 0.7 }}>2× split</span>
+        <span style={{ fontSize: '9px', opacity: 0.7 }}>R-click +</span>
       </div>
       <div
         ref={trackRef}
         className="section-timeline-track"
         onDoubleClick={handleTrackDoubleClick}
+        onContextMenu={handleTrackContextMenu}
       >
         {sorted.map((section, idx) => {
           const leftPx = section.start * pixelsPerBeat - scrollX;
@@ -91,6 +125,7 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
 
           const fn = chosenChord?.harmonicFunction ?? 'tonic';
           const isActive = section.id === activeSectionId;
+          const isLast = idx === sorted.length - 1;
 
           return (
             <React.Fragment key={section.id}>
@@ -101,7 +136,7 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
                   width: `${Math.max(24, widthPx - 4)}px`,
                 }}
                 onClick={() => onSelectSection(section.id)}
-                title={`${chosenChord?.fullName ?? 'Empty section'} — Double-click to split`}
+                title={`${chosenChord?.fullName ?? 'Empty section'} — Right-click to split, drag edges to resize`}
               >
                 <div className={`section-block-accent bg-fn-${fn}`} />
                 <div className="section-block-top">
@@ -139,15 +174,37 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
                 </div>
               </div>
 
-              {idx < sorted.length - 1 && (
+              {!isLast ? (
                 <div
                   className="section-handle"
                   style={{ left: `${section.end * pixelsPerBeat - scrollX}px` }}
                   onMouseDown={(e) =>
                     startBoundaryDrag(e, section.id, sorted[idx + 1].id)
                   }
-                  title="Drag to resize chord section"
+                  title="Drag to resize chord sections"
                 />
+              ) : (
+                <>
+                  <div
+                    className="section-handle"
+                    style={{ left: `${section.end * pixelsPerBeat - scrollX}px` }}
+                    onMouseDown={(e) => startLastEdgeDrag(e, section.id)}
+                    title="Drag to extend or shrink the last chord section"
+                  />
+                  <button
+                    className="btn btn-sm"
+                    style={{
+                      position: 'absolute',
+                      top: '15px',
+                      left: `${section.end * pixelsPerBeat - scrollX + 10}px`,
+                      opacity: 0.85,
+                    }}
+                    onClick={() => onAddSectionAt()}
+                    title="Add a new chord section (or right-click anywhere on the chord bar)"
+                  >
+                    + Section
+                  </button>
+                </>
               )}
             </React.Fragment>
           );
