@@ -457,6 +457,40 @@ export class WebAudioEngine implements AudioEngine {
     this.rafId = requestAnimationFrame(tickVisual);
   }
 
+  updatePlayback(partial: {
+    notes?: PlaybackOptions['notes'];
+    tempo?: number;
+    loopEndBeat?: number;
+    loop?: boolean;
+  }): void {
+    if (!this.playing || !this.currentOptions) return;
+
+    if (
+      partial.tempo !== undefined &&
+      partial.tempo !== this.currentOptions.tempo &&
+      this.ctx
+    ) {
+      // Smoothly re-anchor playhead clock so changing tempo mid-playback doesn't jump
+      const now = this.ctx.currentTime;
+      const oldSecPerBeat = 60 / this.currentOptions.tempo;
+      const currentBeat =
+        this.startBeatOffset + (now - this.startAudioTime) / oldSecPerBeat;
+      this.startBeatOffset = currentBeat;
+      this.startAudioTime = now;
+      this.currentOptions.tempo = partial.tempo;
+    }
+
+    if (partial.notes !== undefined) {
+      this.currentOptions.notes = partial.notes;
+    }
+    if (partial.loopEndBeat !== undefined) {
+      this.currentOptions.loopEndBeat = partial.loopEndBeat;
+    }
+    if (partial.loop !== undefined) {
+      this.currentOptions.loop = partial.loop;
+    }
+  }
+
   stop(): void {
     this.playing = false;
     this.currentOptions = null;

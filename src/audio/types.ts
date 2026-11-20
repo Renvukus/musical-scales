@@ -22,6 +22,12 @@ export interface AudioEngine {
   playPreviewChord(pitches: number[], durationSec?: number, velocity?: number): void;
   stopPreviewChord(): void;
   start(options: PlaybackOptions): void;
+  updatePlayback(partial: {
+    notes?: Note[];
+    tempo?: number;
+    loopEndBeat?: number;
+    loop?: boolean;
+  }): void;
   stop(): void;
   isPlaying(): boolean;
   subscribeActivePitches(listener: (pitches: ReadonlySet<number>) => void): () => void;

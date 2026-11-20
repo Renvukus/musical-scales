@@ -183,6 +183,17 @@ export const App: React.FC = () => {
     setPlayheadBeat(0);
   }, []);
 
+  // Keep live playback in sync when notes, tempo, or loop toggle change while playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    audioEngine.updatePlayback({
+      notes: composition.notes,
+      tempo: composition.tempo,
+      loop,
+      loopEndBeat: getPlaybackEndBeat(playbackOriginRef.current),
+    });
+  }, [isPlaying, composition.notes, composition.tempo, loop, getPlaybackEndBeat]);
+
   // Global keyboard shortcuts (Space = Play/Pause, Ctrl+Z/Y = Undo/Redo, Del/X = Delete focused chord section)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
