@@ -23,6 +23,7 @@ export class WebAudioEngine implements AudioEngine {
 
   private activeVoiceCounts = new Map<number, number>();
   private activeNodes = new Set<{ oscs: OscillatorNode[]; gain: GainNode }>();
+  private previewNodes = new Set<{ oscs: OscillatorNode[]; gain: GainNode }>();
   private voiceTimers = new Set<number>();
   private pitchListeners = new Set<(pitches: ReadonlySet<number>) => void>();
 
@@ -126,13 +127,16 @@ export class WebAudioEngine implements AudioEngine {
     when: number,
     durationSec: number,
     velocity: number,
+    isPreview = false,
   ): void {
     const ctx = this.ensureContext();
     if (!this.masterGain) return;
 
     const freq = midiToFreq(pitch);
     const dur = Math.max(0.06, durationSec);
-    this.trackVoiceWindow(pitch, when, dur);
+    if (!isPreview) {
+      this.trackVoiceWindow(pitch, when, dur);
+    }
     const peakGain = Math.max(0.04, Math.min(0.42, velocity * 0.32));
 
     if (this.patch === 'triangle') {
@@ -142,10 +146,12 @@ export class WebAudioEngine implements AudioEngine {
       osc.frequency.setValueAtTime(freq, when);
 
       const tAttack = when + 0.012;
-      const tReleaseStart = when + dur;
+      const tReleaseEnd = isPreview ? when + dur : when + dur + 0.09;
+      const tReleaseStart = isPreview
+        ? Math.max(tAttack + 0.01, tReleaseEnd - 0.016)
+        : when + dur;
       const tDecay = Math.min(tAttack + 0.16, tReleaseStart);
       const sustainGain = peakGain * 0.62;
-      const tReleaseEnd = tReleaseStart + 0.09;
 
       gain.gain.setValueAtTime(0, when);
       gain.gain.linearRampToValueAtTime(peakGain, tAttack);
@@ -160,10 +166,11 @@ export class WebAudioEngine implements AudioEngine {
       osc.connect(gain);
       gain.connect(this.masterGain);
       const handle = { oscs: [osc], gain };
-      this.activeNodes.add(handle);
-      osc.onended = () => this.activeNodes.delete(handle);
+      const targetSet = isPreview ? this.previewNodes : this.activeNodes;
+      targetSet.add(handle);
+      osc.onended = () => targetSet.delete(handle);
       osc.start(when);
-      osc.stop(tReleaseEnd + 0.03);
+      osc.stop(tReleaseEnd + 0.02);
       return;
     }
 
@@ -175,10 +182,12 @@ export class WebAudioEngine implements AudioEngine {
     const overGain = ctx.createGain();
 
     const tAttack = when + 0.01;
-    const tReleaseStart = when + dur;
+    const tReleaseEnd = isPreview ? when + dur : when + dur + 0.14;
+    const tReleaseStart = isPreview
+      ? Math.max(tAttack + 0.01, tReleaseEnd - 0.016)
+      : when + dur;
     const tDecay = Math.min(tAttack + 0.38, tReleaseStart);
     const sustainGain = peakGain * 0.45;
-    const tReleaseEnd = tReleaseStart + 0.14;
 
     fund.type = 'sine';
     fund.frequency.setValueAtTime(freq, when);
@@ -214,13 +223,14 @@ export class WebAudioEngine implements AudioEngine {
     amp.connect(this.masterGain);
 
     const handle = { oscs: [fund, over], gain: amp };
-    this.activeNodes.add(handle);
-    fund.onended = () => this.activeNodes.delete(handle);
+    const targetSet = isPreview ? this.previewNodes : this.activeNodes;
+    targetSet.add(handle);
+    fund.onended = () => targetSet.delete(handle);
 
     fund.start(when);
     over.start(when);
-    fund.stop(tReleaseEnd + 0.03);
-    over.stop(tReleaseEnd + 0.03);
+    fund.stop(tReleaseEnd + 0.02);
+    over.stop(tReleaseEnd + 0.02);
   }
 
   playNote(pitch: number, durationSec = 0.45, velocity = 0.8): void {
@@ -235,6 +245,39 @@ export class WebAudioEngine implements AudioEngine {
     // Subtle 18ms strum makes chords sound musical rather than robotic
     pitches.forEach((pitch, idx) => {
       this.triggerVoice(pitch, now + idx * 0.018, durationSec, perNoteVel);
+    });
+  }
+
+  stopPreviewChord(): void {
+    if (!this.ctx || this.previewNodes.size === 0) return;
+    const now = this.ctx.currentTime;
+    for (const handle of this.previewNodes) {
+      try {
+        handle.gain.gain.cancelScheduledValues(now);
+        handle.gain.gain.setValueAtTime(handle.gain.gain.value, now);
+        handle.gain.gain.linearRampToValueAtTime(0, now + 0.008);
+        for (const osc of handle.oscs) {
+          osc.stop(now + 0.012);
+        }
+      } catch {
+        // Already stopped
+      }
+    }
+    this.previewNodes.clear();
+  }
+
+  playPreviewChord(pitches: number[], durationSec = 1.0, velocity = 0.52): void {
+    const ctx = this.ensureContext();
+    // Cut off previous preview chord immediately so there is zero leak across transitions
+    this.stopPreviewChord();
+    const start = ctx.currentTime + 0.008;
+    const chordEnd = start + Math.max(0.08, durationSec);
+    const perNoteVel = velocity / Math.sqrt(Math.max(1, pitches.length * 0.55));
+    // Very subtle 7ms onset strum; all notes terminate together at exact chordEnd
+    pitches.forEach((pitch, idx) => {
+      const onset = start + idx * 0.007;
+      const noteDur = Math.max(0.06, chordEnd - onset);
+      this.triggerVoice(pitch, onset, noteDur, perNoteVel, true);
     });
   }
 
@@ -316,6 +359,7 @@ export class WebAudioEngine implements AudioEngine {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    this.stopPreviewChord();
     if (this.ctx && this.activeNodes.size > 0) {
       const now = this.ctx.currentTime;
       for (const handle of this.activeNodes) {

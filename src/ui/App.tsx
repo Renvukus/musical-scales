@@ -75,6 +75,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!isPlaying || !chordPreview) {
       lastPreviewSectionRef.current = null;
+      audioEngine.stopPreviewChord();
       return;
     }
     const currentSec = composition.sections.find(
@@ -88,15 +89,18 @@ export const App: React.FC = () => {
       (currentSec.selectedChordId
         ? secAnalysis?.candidates.find((c) => c.id === currentSec.selectedChordId)
         : undefined) ?? secAnalysis?.topChord;
-    if (!chosen) return;
+    if (!chosen) {
+      audioEngine.stopPreviewChord();
+      return;
+    }
 
     const baseMidi = 48 + chosen.rootPc;
     const pitches = chosen.definition.intervals.map((semi) => baseMidi + semi);
-    const secBeats = Number.isFinite(currentSec.end)
-      ? Math.max(0.5, currentSec.end - currentSec.start)
+    const remainingBeats = Number.isFinite(currentSec.end)
+      ? Math.max(0.1, currentSec.end - playheadBeat)
       : composition.timeSignature.numerator;
-    const durSec = Math.min(2.2, (secBeats * 60) / composition.tempo);
-    audioEngine.playChord(pitches, durSec, 0.52);
+    const durSec = (remainingBeats * 60) / composition.tempo;
+    audioEngine.playPreviewChord(pitches, durSec, 0.52);
   }, [
     isPlaying,
     chordPreview,

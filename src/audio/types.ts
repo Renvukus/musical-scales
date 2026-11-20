@@ -19,6 +19,8 @@ export interface AudioEngine {
   setVolume(volume: number): void;
   playNote(pitch: number, durationSec?: number, velocity?: number): void;
   playChord(pitches: number[], durationSec?: number, velocity?: number): void;
+  playPreviewChord(pitches: number[], durationSec?: number, velocity?: number): void;
+  stopPreviewChord(): void;
   start(options: PlaybackOptions): void;
   stop(): void;
   isPlaying(): boolean;
