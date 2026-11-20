@@ -10,8 +10,11 @@ function midiToFreq(midi: number): number {
 export class WebAudioEngine implements AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private pianoWave: PeriodicWave | null = null;
+  private hammerBuffer: AudioBuffer | null = null;
+  private reverbInput: GainNode | null = null;
   private patch: SynthPatch = 'epiano';
-  private volume = 0.7;
+  private volume = 0.72;
 
   private playing = false;
   private rafId: number | null = null;
@@ -22,8 +25,8 @@ export class WebAudioEngine implements AudioEngine {
   private currentOptions: PlaybackOptions | null = null;
 
   private activeVoiceCounts = new Map<number, number>();
-  private activeNodes = new Set<{ oscs: OscillatorNode[]; gain: GainNode }>();
-  private previewNodes = new Set<{ oscs: OscillatorNode[]; gain: GainNode }>();
+  private activeNodes = new Set<{ oscs: AudioScheduledSourceNode[]; gain: GainNode }>();
+  private previewNodes = new Set<{ oscs: AudioScheduledSourceNode[]; gain: GainNode }>();
   private voiceTimers = new Set<number>();
   private pitchListeners = new Set<(pitches: ReadonlySet<number>) => void>();
 
@@ -84,6 +87,66 @@ export class WebAudioEngine implements AudioEngine {
     };
   }
 
+  private buildPianoResources(ctx: AudioContext): void {
+    // Rich acoustic piano harmonic spectrum (partials 1..12)
+    const real = new Float32Array(13);
+    const imag = new Float32Array([
+      0, // DC
+      1.0, // 1st (fundamental)
+      0.56, // 2nd (octave)
+      0.35, // 3rd (fifth)
+      0.24, // 4th
+      0.17, // 5th
+      0.12, // 6th
+      0.085, // 7th
+      0.06, // 8th
+      0.042, // 9th
+      0.028, // 10th
+      0.018, // 11th
+      0.012, // 12th
+    ]);
+    this.pianoWave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+
+    // Short 32ms felt-hammer noise transient buffer
+    const hammerLen = Math.floor(ctx.sampleRate * 0.032);
+    const hBuf = ctx.createBuffer(1, hammerLen, ctx.sampleRate);
+    const hData = hBuf.getChannelData(0);
+    for (let i = 0; i < hammerLen; i++) {
+      const env = Math.pow(1 - i / hammerLen, 2.2);
+      hData[i] = (Math.random() * 2 - 1) * env;
+    }
+    this.hammerBuffer = hBuf;
+
+    // Subtle 0.75s studio room impulse response for acoustic depth
+    const irLen = Math.floor(ctx.sampleRate * 0.75);
+    const irBuf = ctx.createBuffer(2, irLen, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = irBuf.getChannelData(ch);
+      for (let i = 0; i < irLen; i++) {
+        const decay = Math.pow(1 - i / irLen, 3.2);
+        data[i] = (Math.random() * 2 - 1) * decay * 0.35;
+      }
+    }
+    const convolver = ctx.createConvolver();
+    convolver.buffer = irBuf;
+
+    const revFilter = ctx.createBiquadFilter();
+    revFilter.type = 'lowpass';
+    revFilter.frequency.value = 3800;
+
+    const revWet = ctx.createGain();
+    revWet.gain.value = 0.16;
+
+    this.reverbInput = ctx.createGain();
+    this.reverbInput.gain.value = 1;
+    this.reverbInput.connect(convolver);
+    convolver.connect(revFilter);
+    revFilter.connect(revWet);
+    if (this.masterGain) {
+      revWet.connect(this.masterGain);
+    }
+  }
+
   private ensureContext(): AudioContext {
     if (!this.ctx) {
       const AudioCtx =
@@ -94,12 +157,21 @@ export class WebAudioEngine implements AudioEngine {
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this.volume;
 
-      // Gentle soft-clipping limiter via compressor to keep chords clean
+      // Gentle presence boost + soft limiter so chords stay crisp and never clip
+      const presence = this.ctx.createBiquadFilter();
+      presence.type = 'highshelf';
+      presence.frequency.value = 2600;
+      presence.gain.value = 2.5;
+
       const comp = this.ctx.createDynamicsCompressor();
-      comp.threshold.value = -12;
-      comp.ratio.value = 4;
-      this.masterGain.connect(comp);
+      comp.threshold.value = -10;
+      comp.ratio.value = 3.5;
+
+      this.masterGain.connect(presence);
+      presence.connect(comp);
       comp.connect(this.ctx.destination);
+
+      this.buildPianoResources(this.ctx);
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
@@ -137,7 +209,7 @@ export class WebAudioEngine implements AudioEngine {
     if (!isPreview) {
       this.trackVoiceWindow(pitch, when, dur);
     }
-    const peakGain = Math.max(0.04, Math.min(0.42, velocity * 0.32));
+    const peakGain = Math.max(0.05, Math.min(0.42, velocity * 0.34));
 
     if (this.patch === 'triangle') {
       const osc = ctx.createOscillator();
@@ -145,7 +217,7 @@ export class WebAudioEngine implements AudioEngine {
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, when);
 
-      const tAttack = when + 0.012;
+      const tAttack = when + 0.01;
       const tReleaseEnd = isPreview ? when + dur : when + dur + 0.09;
       const tReleaseStart = isPreview
         ? Math.max(tAttack + 0.01, tReleaseEnd - 0.016)
@@ -174,63 +246,100 @@ export class WebAudioEngine implements AudioEngine {
       return;
     }
 
-    // Warm electric-piano patch: fundamental sine + soft 2nd harmonic + smooth pop-free ADSR
-    const fund = ctx.createOscillator();
-    const over = ctx.createOscillator();
-    const filter = ctx.createBiquadFilter();
-    const amp = ctx.createGain();
-    const overGain = ctx.createGain();
+    // Realistic Acoustic Piano synthesis:
+    // Dual detuned multi-harmonic unison strings + felt hammer transient + bright velocity-scaled filter
+    const stringA = ctx.createOscillator();
+    const stringB = ctx.createOscillator();
+    if (this.pianoWave) {
+      stringA.setPeriodicWave(this.pianoWave);
+      stringB.setPeriodicWave(this.pianoWave);
+    } else {
+      stringA.type = 'triangle';
+      stringB.type = 'sawtooth';
+    }
+    stringA.frequency.setValueAtTime(freq, when);
+    stringB.frequency.setValueAtTime(freq, when);
+    stringA.detune.setValueAtTime(-2.2, when);
+    stringB.detune.setValueAtTime(2.2, when);
 
-    const tAttack = when + 0.01;
-    const tReleaseEnd = isPreview ? when + dur : when + dur + 0.14;
+    const mixA = ctx.createGain();
+    const mixB = ctx.createGain();
+    mixA.gain.value = 0.56;
+    mixB.gain.value = 0.44;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 0.65;
+
+    const amp = ctx.createGain();
+
+    // Pitch-dependent natural string decay (higher notes decay faster like real piano strings)
+    const naturalDecay = Math.max(0.28, Math.min(1.6, 1.45 - (pitch - 36) * 0.02));
+    const tAttack = when + 0.004;
+    const tReleaseEnd = isPreview ? when + dur : when + dur + 0.16;
     const tReleaseStart = isPreview
       ? Math.max(tAttack + 0.01, tReleaseEnd - 0.016)
       : when + dur;
-    const tDecay = Math.min(tAttack + 0.38, tReleaseStart);
-    const sustainGain = peakGain * 0.45;
+    const tDecay = Math.min(tAttack + naturalDecay, tReleaseStart);
+    const sustainGain = peakGain * Math.max(0.18, 0.42 - (pitch - 48) * 0.004);
 
-    fund.type = 'sine';
-    fund.frequency.setValueAtTime(freq, when);
-
-    over.type = 'triangle';
-    over.frequency.setValueAtTime(freq * 2, when);
-
-    overGain.gain.setValueAtTime(0.2, when);
-    overGain.gain.exponentialRampToValueAtTime(0.015, tReleaseEnd);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(Math.min(5200, freq * 5.5), when);
-    filter.frequency.exponentialRampToValueAtTime(
-      Math.min(2000, freq * 2.4),
-      tReleaseEnd,
-    );
+    // Bright hammer strike opening -> natural warm string sustain (never muffled)
+    const brightPeak = Math.min(14000, freq * (10 + velocity * 6) + 1800);
+    const brightTail = Math.min(6200, Math.max(1100, freq * 5.2));
+    filter.frequency.setValueAtTime(brightPeak, when);
+    filter.frequency.exponentialRampToValueAtTime(brightTail, Math.max(tAttack + 0.05, tDecay));
 
     amp.gain.setValueAtTime(0, when);
     amp.gain.linearRampToValueAtTime(peakGain, tAttack);
     if (tDecay > tAttack + 0.005) {
-      amp.gain.linearRampToValueAtTime(sustainGain, tDecay);
+      amp.gain.exponentialRampToValueAtTime(Math.max(0.001, sustainGain), tDecay);
       if (tReleaseStart > tDecay + 0.005) {
-        amp.gain.setValueAtTime(sustainGain, tReleaseStart);
+        amp.gain.setValueAtTime(Math.max(0.001, sustainGain), tReleaseStart);
       }
     }
-    // Smooth linear ramp to exact 0 eliminates click/pop when oscillator stops
+    // Smooth linear ramp to exact 0 eliminates click/pop when oscillators stop
     amp.gain.linearRampToValueAtTime(0, tReleaseEnd);
 
-    fund.connect(filter);
-    over.connect(overGain);
-    overGain.connect(filter);
+    stringA.connect(mixA);
+    stringB.connect(mixB);
+    mixA.connect(filter);
+    mixB.connect(filter);
     filter.connect(amp);
     amp.connect(this.masterGain);
+    if (this.reverbInput && !isPreview) {
+      amp.connect(this.reverbInput);
+    }
 
-    const handle = { oscs: [fund, over], gain: amp };
+    const sources: AudioScheduledSourceNode[] = [stringA, stringB];
+
+    // Felt hammer strike transient
+    if (this.hammerBuffer) {
+      const hammer = ctx.createBufferSource();
+      hammer.buffer = this.hammerBuffer;
+      const hammerFilter = ctx.createBiquadFilter();
+      hammerFilter.type = 'bandpass';
+      hammerFilter.frequency.setValueAtTime(Math.min(5500, Math.max(900, freq * 5.5)), when);
+      hammerFilter.Q.value = 1.2;
+      const hammerGain = ctx.createGain();
+      hammerGain.gain.setValueAtTime(peakGain * 0.24, when);
+      hammerGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.028);
+      hammer.connect(hammerFilter);
+      hammerFilter.connect(hammerGain);
+      hammerGain.connect(this.masterGain);
+      hammer.start(when);
+      hammer.stop(when + 0.032);
+      sources.push(hammer);
+    }
+
+    const handle = { oscs: sources, gain: amp };
     const targetSet = isPreview ? this.previewNodes : this.activeNodes;
     targetSet.add(handle);
-    fund.onended = () => targetSet.delete(handle);
+    stringA.onended = () => targetSet.delete(handle);
 
-    fund.start(when);
-    over.start(when);
-    fund.stop(tReleaseEnd + 0.02);
-    over.stop(tReleaseEnd + 0.02);
+    stringA.start(when);
+    stringB.start(when);
+    stringA.stop(tReleaseEnd + 0.02);
+    stringB.stop(tReleaseEnd + 0.02);
   }
 
   playNote(pitch: number, durationSec = 0.45, velocity = 0.8): void {

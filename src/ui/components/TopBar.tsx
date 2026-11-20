@@ -130,7 +130,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           onChange={(e) => onPatchChange(e.target.value as SynthPatch)}
           title="Synthesizer sound"
         >
-          <option value="epiano">Warm E-Piano</option>
+          <option value="epiano">Acoustic Piano</option>
           <option value="triangle">Triangle Synth</option>
         </select>
 
