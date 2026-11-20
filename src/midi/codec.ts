@@ -22,6 +22,7 @@ export function exportCompositionToMidi(composition: Composition): Uint8Array {
   const secPerBeat = 60 / composition.tempo;
 
   for (const note of composition.notes) {
+    if (note.muted) continue;
     track.addNote({
       midi: Math.max(0, Math.min(127, Math.round(note.pitch))),
       time: Math.max(0, note.start * secPerBeat),

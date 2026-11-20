@@ -223,4 +223,43 @@ describe('Harmonic Analysis Engine', () => {
     });
     expect(s3.present.notes.map((x) => x.pitch)).toEqual([48, 52, 55, 60]);
   });
+
+  it('patches per-note velocity and excludes muted notes from harmonic analysis', () => {
+    const comp: Composition = {
+      title: 'Velocity & Mute Test',
+      tempo: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      totalBeats: 4,
+      notes: [
+        { id: 'n1', pitch: 60, start: 0, duration: 4, velocity: 0.8 }, // C
+        { id: 'n2', pitch: 64, start: 0, duration: 4, velocity: 0.8 }, // E
+        { id: 'n3', pitch: 67, start: 0, duration: 4, velocity: 0.8 }, // G
+        { id: 'n4', pitch: 63, start: 0, duration: 4, velocity: 0.8, muted: true }, // Eb (muted)
+      ],
+      sections: [{ id: 's1', start: 0, end: 4 }],
+    };
+
+    // With Eb muted, analysis should cleanly detect C major
+    const res = analyzeComposition(comp);
+    expect(res.sections['s1'].topChord?.symbol).toBe('C');
+
+    // PATCH_NOTES updates velocity and mute state
+    const h0 = createHistory(comp);
+    const h1 = compositionReducer(h0, {
+      type: 'PATCH_NOTES',
+      patches: [
+        { id: 'n1', velocity: 0.35 },
+        { id: 'n2', muted: true },
+        { id: 'n4', muted: false },
+      ],
+      commit: true,
+    });
+    expect(h1.present.notes.find((x) => x.id === 'n1')?.velocity).toBe(0.35);
+    expect(h1.present.notes.find((x) => x.id === 'n2')?.muted).toBe(true);
+    expect(h1.present.notes.find((x) => x.id === 'n4')?.muted).toBe(false);
+
+    // Now E is muted and Eb is unmuted -> C minor!
+    const resMin = analyzeComposition(h1.present);
+    expect(resMin.sections['s1'].topChord?.symbol).toBe('Cm');
+  });
 });

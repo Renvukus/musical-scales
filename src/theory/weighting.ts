@@ -51,6 +51,7 @@ export function buildPitchProfile(
 
   const overlapping: Array<{ note: Note; effectiveDuration: number }> = [];
   for (const note of notes) {
+    if (note.muted) continue;
     const noteEnd = note.start + note.duration;
     if (windowStart !== undefined && windowEnd !== undefined) {
       const overlapStart = Math.max(note.start, windowStart);

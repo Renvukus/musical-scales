@@ -35,7 +35,14 @@ interface PianoRollProps {
   onAddNote: (note: Note) => void;
   onAddNotes: (notes: Note[]) => void;
   onPatchNotes: (
-    patches: Array<{ id: string; start?: number; duration?: number; pitch?: number }>,
+    patches: Array<{
+      id: string;
+      start?: number;
+      duration?: number;
+      pitch?: number;
+      velocity?: number;
+      muted?: boolean;
+    }>,
     commit: boolean,
   ) => void;
   onUpdateNotes: (notes: Note[], commit: boolean) => void;
@@ -378,6 +385,21 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         } else {
           pasteNotes(clip);
         }
+      } else if (
+        !latestRef.current.isSectionFocused &&
+        !mod &&
+        !e.altKey &&
+        e.key.toLowerCase() === 'm'
+      ) {
+        if (sel.size > 0) {
+          e.preventDefault();
+          const chosen = comp.notes.filter((n) => sel.has(n.id));
+          const allMuted = chosen.every((n) => Boolean(n.muted));
+          onPatchNotes(
+            chosen.map((n) => ({ id: n.id, muted: !allMuted })),
+            true,
+          );
+        }
       } else if (mod && e.key.toLowerCase() === 'd') {
         if (sel.size > 0) {
           e.preventDefault();
@@ -391,6 +413,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
             start: n.start + span,
             duration: n.duration,
             velocity: n.velocity,
+            muted: n.muted,
           }));
           onAddNotes(dupes);
           setSelectedIds(new Set(dupes.map((n) => n.id)));
@@ -400,7 +423,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onAddNotes, onDeleteNotes]);
+  }, [onAddNotes, onDeleteNotes, onPatchNotes]);
 
   // Hit-testing notes
   const hitTestNote = (x: number, y: number): { note: Note; isRightEdge: boolean } | null => {
@@ -612,9 +635,23 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       return;
     }
 
-    // 5. Clicking existing note -> resize or move
+    // 5. Clicking existing note -> Alt+Click toggles mute, otherwise resize or move
     if (hit) {
-      audioEngine.playNote(hit.note.pitch, 0.3, hit.note.velocity);
+      if (e.altKey) {
+        const targetIds = selectedIds.has(hit.note.id)
+          ? Array.from(selectedIds)
+          : [hit.note.id];
+        const targetNotes = composition.notes.filter((n) => targetIds.includes(n.id));
+        const nextMuted = !targetNotes.every((n) => Boolean(n.muted));
+        onPatchNotes(
+          targetNotes.map((n) => ({ id: n.id, muted: nextMuted })),
+          true,
+        );
+        return;
+      }
+      if (!hit.note.muted) {
+        audioEngine.playNote(hit.note.pitch, 0.3, hit.note.velocity);
+      }
       if (hit.isRightEdge) {
         const resizeSelection = selectedIds.has(hit.note.id)
           ? selectedIds
@@ -1004,32 +1041,63 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const pc = toPitchClass(note.pitch);
       const inChord = chord ? chord.pitchClasses.includes(pc) : true;
       const palette = FN_COLORS[chord?.harmonicFunction ?? 'tonic'];
+      const isMuted = Boolean(note.muted);
       const isSelected = selectedIds.has(note.id);
       const isNoteSounding =
-        isPlaying && playheadBeat >= note.start && playheadBeat < note.start + note.duration;
+        !isMuted &&
+        isPlaying &&
+        playheadBeat >= note.start &&
+        playheadBeat < note.start + note.duration;
 
       const drawX = Math.max(KEY_WIDTH, nx);
       const drawW = Math.max(4, nx + nw - drawX - 1);
 
-      ctx.fillStyle = isNoteSounding
-        ? '#fde047'
-        : ownerSec
-          ? inChord
-            ? palette.fill
-            : '#64748b'
-          : '#94a3b8';
-      ctx.globalAlpha = isNoteSounding || isSelected ? 1 : 0.88;
+      ctx.fillStyle = isMuted
+        ? '#262c3a'
+        : isNoteSounding
+          ? '#fde047'
+          : ownerSec
+            ? inChord
+              ? palette.fill
+              : '#64748b'
+            : '#94a3b8';
+      const velAlpha = 0.56 + 0.44 * Math.max(0.05, Math.min(1, note.velocity));
+      ctx.globalAlpha = isMuted
+        ? isSelected
+          ? 0.78
+          : 0.56
+        : isNoteSounding || isSelected
+          ? 1
+          : velAlpha;
       ctx.beginPath();
       ctx.roundRect(drawX, ny + 2, drawW, rowHeight - 4, 4);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      if (ownerSec && !inChord && showGuides && !isNoteSounding) {
+      // Subtle bottom velocity indicator bar inside unmuted notes
+      if (!isMuted && !isNoteSounding && rowHeight >= 12 && drawW >= 10) {
+        const velBarW = Math.max(2, (drawW - 4) * Math.max(0.05, Math.min(1, note.velocity)));
+        ctx.fillStyle = 'rgba(9, 17, 20, 0.32)';
+        ctx.fillRect(drawX + 2, ny + rowHeight - 5, drawW - 4, 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.fillRect(drawX + 2, ny + rowHeight - 5, velBarW, 2);
+      }
+
+      if (!isMuted && ownerSec && !inChord && showGuides && !isNoteSounding) {
         ctx.fillStyle = '#e29578';
         ctx.fillRect(drawX, ny + 2, 4, rowHeight - 4);
       }
 
-      if (isSelected || isNoteSounding) {
+      if (isMuted) {
+        ctx.save();
+        ctx.strokeStyle = isSelected ? '#e2e8f0' : 'rgba(148, 163, 184, 0.55)';
+        ctx.lineWidth = isSelected ? 1.5 : 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.roundRect(drawX + 0.5, ny + 2.5, drawW - 1, rowHeight - 5, 4);
+        ctx.stroke();
+        ctx.restore();
+      } else if (isSelected || isNoteSounding) {
         ctx.strokeStyle = isNoteSounding ? '#fef9c3' : '#ffffff';
         ctx.lineWidth = isNoteSounding ? 1.8 : 1.5;
         ctx.beginPath();
@@ -1040,10 +1108,15 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 
       const noteFontSize = Math.max(8, Math.min(14, Math.round(rowHeight * 0.54)));
       if (rowHeight >= 11 && drawW >= noteFontSize * 2.6) {
-        ctx.fillStyle = isNoteSounding || !ownerSec || inChord ? '#091114' : '#f1f5f9';
+        ctx.fillStyle = isMuted
+          ? '#94a3b8'
+          : isNoteSounding || !ownerSec || inChord
+            ? '#091114'
+            : '#f1f5f9';
         ctx.font = `600 ${noteFontSize}px "JetBrains Mono", monospace`;
         ctx.textBaseline = 'middle';
-        ctx.fillText(midiToNoteName(note.pitch), drawX + 6, ny + rowHeight / 2 + 0.5);
+        const label = isMuted ? `✕ ${midiToNoteName(note.pitch)}` : midiToNoteName(note.pitch);
+        ctx.fillText(label, drawX + 6, ny + rowHeight / 2 + 0.5);
         ctx.textBaseline = 'alphabetic';
       }
     }

@@ -1004,3 +1004,85 @@ select option {
   align-items: center;
   gap: 2px;
 }
+
+/* Velocity & Mute Lane */
+.velocity-lane {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.velocity-lane.is-open {
+  height: 70px;
+}
+
+.velocity-lane.is-collapsed {
+  height: 24px;
+}
+
+.velocity-lane-gutter {
+  width: var(--piano-key-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  padding: 2px 4px;
+}
+
+.velocity-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.velocity-toggle-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.velocity-readout {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--fn-predominant);
+}
+
+.section-clear-btn.is-muted-active {
+  color: var(--fn-dominant);
+  border-color: var(--fn-dominant);
+}
+
+.velocity-lane-track {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+}
+
+.velocity-lane-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: ns-resize;
+}
+
+.velocity-lane-collapsed-hint {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}

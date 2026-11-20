@@ -22,6 +22,7 @@ import { ScaleExplorer } from './components/ScaleExplorer';
 import { SectionTimeline } from './components/SectionTimeline';
 import { TheoryInspector } from './components/TheoryInspector';
 import { TopBar } from './components/TopBar';
+import { VelocityLane } from './components/VelocityLane';
 import { getFitPillStyle } from './fitColor';
 
 export const App: React.FC = () => {
@@ -458,6 +459,21 @@ export const App: React.FC = () => {
             }}
           />
 
+          <VelocityLane
+            composition={composition}
+            analysis={analysis}
+            selectedNoteIds={selectedNoteIds}
+            pixelsPerBeat={pixelsPerBeat}
+            scrollX={scrollX}
+            playheadBeat={playheadBeat}
+            onPatchNotes={(patches, commit) =>
+              dispatch({ type: 'PATCH_NOTES', patches, commit })
+            }
+            onUpdateNotes={(notes, commit) =>
+              dispatch({ type: 'UPDATE_NOTES', notes, commit })
+            }
+          />
+
           <footer className="editor-statusbar">
             <div className="shortcut-hints">
               <span>
@@ -465,6 +481,9 @@ export const App: React.FC = () => {
               </span>
               <span>
                 <span className="kbd">R-Click / X</span> Delete
+              </span>
+              <span>
+                <span className="kbd">M / Alt+Click</span> Mute
               </span>
               <span>
                 <span className="kbd">R-Click Drag</span> Box Select

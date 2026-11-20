@@ -21,7 +21,7 @@ export type CompositionAction =
   | { type: 'ADD_NOTES'; notes: Note[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
   | { type: 'UPDATE_NOTES'; notes: Note[]; commit?: boolean }
-  | { type: 'PATCH_NOTES'; patches: Array<{ id: string; start?: number; duration?: number; pitch?: number }>; commit?: boolean }
+  | { type: 'PATCH_NOTES'; patches: Array<{ id: string; start?: number; duration?: number; pitch?: number; velocity?: number; muted?: boolean }>; commit?: boolean }
   | { type: 'SELECT_SCALE'; scaleId?: string }
   | { type: 'SELECT_SECTION_CHORD'; sectionId: string; chordId?: string }
   | { type: 'SET_SECTION_CONSTRAINT'; sectionId: string; constraint?: ChordConstraint }
@@ -146,6 +146,11 @@ export function compositionReducer(
           start: p.start !== undefined ? p.start : n.start,
           duration: p.duration !== undefined ? p.duration : n.duration,
           pitch: p.pitch !== undefined ? p.pitch : n.pitch,
+          velocity:
+            p.velocity !== undefined
+              ? Math.max(0.05, Math.min(1, Math.round(p.velocity * 100) / 100))
+              : n.velocity,
+          muted: p.muted !== undefined ? p.muted : n.muted,
         };
       });
       const totalBeats = computeTotalBeats(comp, notes, comp.sections);

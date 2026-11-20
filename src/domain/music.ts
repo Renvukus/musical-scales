@@ -15,6 +15,8 @@ export interface Note {
   duration: number;
   /** Velocity normalized to 0..1. */
   velocity: number;
+  /** When true, the note is silenced during playback and excluded from harmonic analysis. */
+  muted?: boolean;
 }
 
 export interface Section {

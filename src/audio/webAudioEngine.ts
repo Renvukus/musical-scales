@@ -209,7 +209,7 @@ export class WebAudioEngine implements AudioEngine {
     if (!isPreview) {
       this.trackVoiceWindow(pitch, when, dur);
     }
-    const peakGain = Math.max(0.05, Math.min(0.42, velocity * 0.34));
+    const peakGain = Math.max(0.015, Math.min(0.42, velocity * 0.38));
 
     if (this.patch === 'triangle') {
       const osc = ctx.createOscillator();
@@ -424,6 +424,7 @@ export class WebAudioEngine implements AudioEngine {
         for (let k = minK; k <= maxK; k++) {
           const cycleOffset = k * loopLen;
           for (const note of opt.notes) {
+            if (note.muted || note.velocity <= 0.001) continue;
             if (note.start < opt.loopStartBeat || note.start >= opt.loopEndBeat) {
               continue;
             }
@@ -449,6 +450,7 @@ export class WebAudioEngine implements AudioEngine {
         this.scheduledUntilBeat = Math.max(this.scheduledUntilBeat, windowEndAbs);
       } else {
         for (const note of opt.notes) {
+          if (note.muted || note.velocity <= 0.001) continue;
           if (
             note.start > this.scheduledUntilBeat &&
             note.start <= windowEndAbs &&
