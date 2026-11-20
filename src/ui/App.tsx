@@ -4,6 +4,7 @@ import type { SnapGrid } from '../domain/music';
 import type { ChordCandidate, ScaleCandidate } from '../domain/theory';
 import { exportCompositionToMidi, importMidiToComposition } from '../midi';
 import { compositionReducer, createInitialHistory } from '../state/compositionStore';
+import { saveCompositionToStorage } from '../state/persistence';
 import { PRESETS } from '../state/presets';
 import { analyzeComposition } from '../theory';
 import { ChordExplorer } from './components/ChordExplorer';
@@ -236,6 +237,23 @@ export const App: React.FC = () => {
 
   // Stop audio on unmount
   useEffect(() => () => audioEngine.stop(), []);
+
+  // Browser localStorage autosave (debounced + immediate flush before tab close)
+  const latestCompRef = React.useRef(composition);
+  latestCompRef.current = composition;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      saveCompositionToStorage(composition);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [composition]);
+
+  useEffect(() => {
+    const flushSave = () => saveCompositionToStorage(latestCompRef.current);
+    window.addEventListener('beforeunload', flushSave);
+    return () => window.removeEventListener('beforeunload', flushSave);
+  }, []);
 
   // MIDI Import / Export handlers
   const handleImportMidiFile = async (file: File) => {

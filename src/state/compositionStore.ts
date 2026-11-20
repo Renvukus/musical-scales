@@ -9,6 +9,7 @@ import {
   type HistoryState,
 } from './history';
 import { PRESETS } from './presets';
+import { loadCompositionFromStorage } from './persistence';
 
 export type CompositionAction =
   | { type: 'LOAD_COMPOSITION'; composition: Composition }
@@ -30,7 +31,8 @@ export type CompositionAction =
   | { type: 'REDO' };
 
 export function createInitialHistory(): HistoryState<Composition> {
-  return createHistory(PRESETS[0].composition);
+  const saved = loadCompositionFromStorage();
+  return createHistory(saved ?? PRESETS[0].composition);
 }
 
 function uid(prefix: string): string {
