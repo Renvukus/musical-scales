@@ -215,7 +215,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         // Vertical zoom anchored under cursor
         const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
         const factor = delta < 0 ? 1.12 : 0.89;
-        const nextRowH = Math.max(7, Math.min(44, Math.round(cur.rowHeight * factor)));
+        const nextRowH = Math.max(7, Math.min(80, Math.round(cur.rowHeight * factor)));
         if (nextRowH !== cur.rowHeight) {
           const anchorY = Math.max(0, y - RULER_HEIGHT);
           const pitchRowOffset = (anchorY + cur.scrollY) / cur.rowHeight;
@@ -243,7 +243,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
           : factor > 1
             ? Math.ceil(rawNext)
             : Math.floor(rawNext);
-      const nextPpb = Math.max(0.5, Math.min(240, rounded));
+      const nextPpb = Math.max(0.5, Math.min(960, rounded));
       if (nextPpb !== cur.pixelsPerBeat) {
         const anchorX = Math.max(0, x - KEY_WIDTH);
         const anchorBeat = (anchorX + cur.scrollX) / cur.pixelsPerBeat;
