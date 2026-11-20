@@ -30,7 +30,7 @@ interface PianoRollProps {
 
 const KEY_WIDTH = 62;
 const RULER_HEIGHT = 24;
-const ROW_HEIGHT = 20;
+const DEFAULT_ROW_HEIGHT = 20;
 const MIN_PITCH = 36; // C2
 const MAX_PITCH = 84; // C6
 
@@ -106,7 +106,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
 }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [scrollY, setScrollY] = useState(() => (MAX_PITCH - 72) * ROW_HEIGHT);
+  const [rowHeight, setRowHeight] = useState(DEFAULT_ROW_HEIGHT);
+  const [scrollY, setScrollY] = useState(() => (MAX_PITCH - 72) * DEFAULT_ROW_HEIGHT);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [clipboard, setClipboard] = useState<ClipboardNote[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 500 });
@@ -114,7 +115,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   const dragRef = useRef<DragMode>({ type: 'none' });
   const [, forceRender] = useState(0);
 
-  // Keep latest props accessible inside window keyboard/drag handlers
+  // Keep latest props accessible inside window keyboard/drag/wheel handlers
   const latestRef = useRef({
     composition,
     selectedIds,
@@ -124,6 +125,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     scrollX,
     scrollY,
     pixelsPerBeat,
+    rowHeight,
+    canvasSize,
   });
   latestRef.current = {
     composition,
@@ -134,6 +137,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     scrollX,
     scrollY,
     pixelsPerBeat,
+    rowHeight,
+    canvasSize,
   };
 
   // Track devicePixelRatio changes (browser zoom in/out) so canvas stays razor sharp
@@ -173,12 +178,63 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     return () => ro.disconnect();
   }, []);
 
+  // Non-passive wheel listener: scroll = horizontal zoom, Shift+scroll = vertical zoom
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const cur = latestRef.current;
+
+      if (e.shiftKey) {
+        // Vertical zoom anchored under cursor
+        const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+        const factor = delta < 0 ? 1.12 : 0.89;
+        const nextRowH = Math.max(12, Math.min(40, Math.round(cur.rowHeight * factor)));
+        if (nextRowH !== cur.rowHeight) {
+          const anchorY = Math.max(0, y - RULER_HEIGHT);
+          const pitchRowOffset = (anchorY + cur.scrollY) / cur.rowHeight;
+          const totalH = (MAX_PITCH - MIN_PITCH + 1) * nextRowH;
+          const maxSY = Math.max(0, totalH - (cur.canvasSize.height - RULER_HEIGHT));
+          const nextSY = Math.max(0, Math.min(maxSY, pitchRowOffset * nextRowH - anchorY));
+          setRowHeight(nextRowH);
+          setScrollY(nextSY);
+        }
+        return;
+      }
+
+      // Horizontal trackpad swipe -> pan horizontally
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 0) {
+        onScrollXChange(Math.max(0, cur.scrollX + e.deltaX));
+        return;
+      }
+
+      // Default scroll wheel -> horizontal zoom anchored under cursor
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      const nextPpb = Math.max(24, Math.min(240, Math.round(cur.pixelsPerBeat * factor)));
+      if (nextPpb !== cur.pixelsPerBeat) {
+        const anchorX = Math.max(0, x - KEY_WIDTH);
+        const anchorBeat = (anchorX + cur.scrollX) / cur.pixelsPerBeat;
+        const nextSX = Math.max(0, anchorBeat * nextPpb - anchorX);
+        onPixelsPerBeatChange(nextPpb);
+        onScrollXChange(nextSX);
+      }
+    };
+
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, [onPixelsPerBeatChange, onScrollXChange]);
+
   // Coordinate converters
   const beatToX = (beat: number) => KEY_WIDTH + beat * pixelsPerBeat - scrollX;
   const xToBeat = (x: number) => (x - KEY_WIDTH + scrollX) / pixelsPerBeat;
-  const pitchToY = (pitch: number) => RULER_HEIGHT + (MAX_PITCH - pitch) * ROW_HEIGHT - scrollY;
+  const pitchToY = (pitch: number) => RULER_HEIGHT + (MAX_PITCH - pitch) * rowHeight - scrollY;
   const yToPitch = (y: number) =>
-    MAX_PITCH - Math.floor((y - RULER_HEIGHT + scrollY) / ROW_HEIGHT);
+    MAX_PITCH - Math.floor((y - RULER_HEIGHT + scrollY) / rowHeight);
 
   const roundClean = (v: number) => Math.round(v * 1e6) / 1e6;
   const snapBeat = (beat: number) => Math.max(0, roundClean(Math.round(beat / snap) * snap));
@@ -278,7 +334,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const nx = beatToX(n.start);
       const nw = Math.max(8, n.duration * pixelsPerBeat);
       const ny = pitchToY(n.pitch);
-      if (x >= nx && x <= nx + nw && y >= ny && y <= ny + ROW_HEIGHT) {
+      if (x >= nx && x <= nx + nw && y >= ny && y <= ny + rowHeight) {
         return { note: n, isRightEdge: x >= nx + nw - 8 };
       }
     }
@@ -292,6 +348,36 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    // 0. Middle-click + drag -> pan horizontally & vertically across the composition
+    if (e.button === 1) {
+      e.preventDefault();
+      const startClientX = e.clientX;
+      const startClientY = e.clientY;
+      const startScrollX = latestRef.current.scrollX;
+      const startScrollY = latestRef.current.scrollY;
+      canvas.style.cursor = 'grabbing';
+
+      const onPanMove = (ev: MouseEvent) => {
+        const dx = ev.clientX - startClientX;
+        const dy = ev.clientY - startClientY;
+        const cur = latestRef.current;
+        const totalH = (MAX_PITCH - MIN_PITCH + 1) * cur.rowHeight;
+        const maxSY = Math.max(0, totalH - (cur.canvasSize.height - RULER_HEIGHT));
+        onScrollXChange(Math.max(0, startScrollX - dx));
+        setScrollY(Math.max(0, Math.min(maxSY, startScrollY - dy)));
+      };
+
+      const onPanUp = () => {
+        canvas.style.cursor = 'crosshair';
+        window.removeEventListener('mousemove', onPanMove);
+        window.removeEventListener('mouseup', onPanUp);
+      };
+
+      window.addEventListener('mousemove', onPanMove);
+      window.addEventListener('mouseup', onPanUp);
+      return;
+    }
+
     // 1. Clicking piano keyboard gutter -> preview pitch
     if (x < KEY_WIDTH && y >= RULER_HEIGHT) {
       const pitch = yToPitch(y);
@@ -301,22 +387,72 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       return;
     }
 
-    // 2. Clicking or dragging top beat ruler -> scrub playhead smoothly
+    // 2. Clicking or dragging top beat ruler -> scrub playhead + auto-scroll at viewport edges
     if (y < RULER_HEIGHT && x >= KEY_WIDTH && e.button === 0) {
-      const seekFromClientX = (clientX: number) => {
+      let lastClientX = e.clientX;
+      let autoScrollRaf: number | null = null;
+
+      const seekFromClientX = (clientX: number, scrollXVal: number) => {
         const curRect = canvas.getBoundingClientRect();
         const localX = clientX - curRect.left;
-        const rawBeat = Math.max(0, (localX - KEY_WIDTH + latestRef.current.scrollX) / latestRef.current.pixelsPerBeat);
+        const rawBeat = Math.max(
+          0,
+          (localX - KEY_WIDTH + scrollXVal) / latestRef.current.pixelsPerBeat,
+        );
         const step = Math.min(latestRef.current.snap, 0.25);
-        onSeek(Math.round(rawBeat / step) * step);
+        onSeek(roundClean(Math.round(rawBeat / step) * step));
       };
-      seekFromClientX(e.clientX);
 
-      const onWindowMove = (ev: MouseEvent) => seekFromClientX(ev.clientX);
+      seekFromClientX(e.clientX, latestRef.current.scrollX);
+
+      const stepAutoScroll = () => {
+        const curRect = canvas.getBoundingClientRect();
+        const rightOverflow = lastClientX - (curRect.right - 20);
+        const leftOverflow = curRect.left + KEY_WIDTH + 20 - lastClientX;
+        let nextSX = latestRef.current.scrollX;
+
+        if (rightOverflow > 0) {
+          const speed = Math.min(28, 6 + rightOverflow * 0.22);
+          nextSX = nextSX + speed;
+        } else if (leftOverflow > 0 && nextSX > 0) {
+          const speed = Math.min(28, 6 + leftOverflow * 0.22);
+          nextSX = Math.max(0, nextSX - speed);
+        }
+
+        if (nextSX !== latestRef.current.scrollX) {
+          latestRef.current.scrollX = nextSX;
+          onScrollXChange(nextSX);
+          seekFromClientX(lastClientX, nextSX);
+        }
+
+        if (rightOverflow > 0 || (leftOverflow > 0 && nextSX > 0)) {
+          autoScrollRaf = requestAnimationFrame(stepAutoScroll);
+        } else {
+          autoScrollRaf = null;
+        }
+      };
+
+      const onWindowMove = (ev: MouseEvent) => {
+        lastClientX = ev.clientX;
+        seekFromClientX(ev.clientX, latestRef.current.scrollX);
+        const curRect = canvas.getBoundingClientRect();
+        const outsideEdge =
+          ev.clientX > curRect.right - 20 ||
+          (ev.clientX < curRect.left + KEY_WIDTH + 20 && latestRef.current.scrollX > 0);
+        if (outsideEdge && autoScrollRaf === null) {
+          autoScrollRaf = requestAnimationFrame(stepAutoScroll);
+        }
+      };
+
       const onWindowUp = () => {
+        if (autoScrollRaf !== null) {
+          cancelAnimationFrame(autoScrollRaf);
+          autoScrollRaf = null;
+        }
         window.removeEventListener('mousemove', onWindowMove);
         window.removeEventListener('mouseup', onWindowUp);
       };
+
       window.addEventListener('mousemove', onWindowMove);
       window.addEventListener('mouseup', onWindowUp);
       return;
@@ -511,7 +647,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const nx = beatToX(n.start);
         const nw = n.duration * pixelsPerBeat;
         const ny = pitchToY(n.pitch);
-        if (nx + nw >= minX && nx <= maxX && ny + ROW_HEIGHT >= minY && ny <= maxY) {
+        if (nx + nw >= minX && nx <= maxX && ny + rowHeight >= minY && ny <= maxY) {
           nextSel.add(n.id);
         }
       }
@@ -525,26 +661,6 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       onUpdateNotes(composition.notes, true);
     }
     dragRef.current = { type: 'none' };
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    if (e.ctrlKey || e.metaKey) {
-      const factor = e.deltaY < 0 ? 1.12 : 0.89;
-      onPixelsPerBeatChange(Math.max(40, Math.min(180, Math.round(pixelsPerBeat * factor))));
-    } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      const delta = e.shiftKey ? e.deltaY : e.deltaX;
-      // Allow scrolling well past totalBeats so user can freely compose further right
-      const maxScrollX = Math.max(
-        0,
-        (composition.totalBeats + 16) * pixelsPerBeat - (canvasSize.width - KEY_WIDTH),
-      );
-      onScrollXChange(Math.max(0, Math.min(maxScrollX, scrollX + delta)));
-    } else {
-      const totalGridHeight = (MAX_PITCH - MIN_PITCH + 1) * ROW_HEIGHT;
-      const maxScrollY = Math.max(0, totalGridHeight - (canvasSize.height - RULER_HEIGHT));
-      setScrollY((prev) => Math.max(0, Math.min(maxScrollY, prev + e.deltaY)));
-    }
   };
 
   // Render Canvas at crisp native devicePixelRatio (even when browser is zoomed!)
@@ -575,20 +691,20 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     // 1. Pitch Rows + Scale Ghost Guides
     for (let pitch = MIN_PITCH; pitch <= MAX_PITCH; pitch++) {
       const y = pitchToY(pitch);
-      if (y + ROW_HEIGHT < RULER_HEIGHT || y > height) continue;
+      if (y + rowHeight < RULER_HEIGHT || y > height) continue;
 
       const pc = toPitchClass(pitch);
       const black = isBlackKey(pitch);
       ctx.fillStyle = black ? '#12151d' : '#161a24';
-      ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, ROW_HEIGHT);
+      ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, rowHeight);
 
       if (showGuides && activeScaleSet.has(pc)) {
         ctx.fillStyle = 'rgba(52, 211, 153, 0.055)';
-        ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, ROW_HEIGHT);
+        ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, rowHeight);
       }
 
       // Crisp 1px horizontal divider
-      const lineY = Math.floor(y + ROW_HEIGHT) + 0.5;
+      const lineY = Math.floor(y + rowHeight) + 0.5;
       ctx.strokeStyle = pc === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.035)';
       ctx.beginPath();
       ctx.moveTo(KEY_WIDTH, lineY);
@@ -615,17 +731,17 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         const palette = FN_COLORS[chord.harmonicFunction];
         for (let pitch = MIN_PITCH; pitch <= MAX_PITCH; pitch++) {
           const y = pitchToY(pitch);
-          if (y + ROW_HEIGHT < RULER_HEIGHT || y > height) continue;
+          if (y + rowHeight < RULER_HEIGHT || y > height) continue;
           const pc = toPitchClass(pitch);
           if (chordSet.has(pc)) {
             ctx.fillStyle = isActiveSec
               ? palette.ghost.replace('0.12', '0.18')
               : palette.ghost;
-            ctx.fillRect(sx, y + 1, ex - sx, ROW_HEIGHT - 2);
+            ctx.fillRect(sx, y + 1, ex - sx, rowHeight - 2);
             if (pc === chord.rootPc && isActiveSec) {
               ctx.fillStyle = palette.fill;
               ctx.globalAlpha = 0.45;
-              ctx.fillRect(sx, y + 1, 3, ROW_HEIGHT - 2);
+              ctx.fillRect(sx, y + 1, 3, rowHeight - 2);
               ctx.globalAlpha = 1;
             }
           }
@@ -688,7 +804,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const nx = beatToX(note.start);
       const nw = Math.max(8, note.duration * pixelsPerBeat);
       const ny = pitchToY(note.pitch);
-      if (nx + nw < KEY_WIDTH || nx > width || ny + ROW_HEIGHT < RULER_HEIGHT || ny > height) {
+      if (nx + nw < KEY_WIDTH || nx > width || ny + rowHeight < RULER_HEIGHT || ny > height) {
         continue;
       }
 
@@ -706,20 +822,20 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       ctx.fillStyle = ownerSec ? (inChord ? palette.fill : '#64748b') : '#94a3b8';
       ctx.globalAlpha = isSelected ? 1 : 0.88;
       ctx.beginPath();
-      ctx.roundRect(drawX, ny + 2, drawW, ROW_HEIGHT - 4, 4);
+      ctx.roundRect(drawX, ny + 2, drawW, rowHeight - 4, 4);
       ctx.fill();
       ctx.globalAlpha = 1;
 
       if (ownerSec && !inChord && showGuides) {
         ctx.fillStyle = '#e29578';
-        ctx.fillRect(drawX, ny + 2, 4, ROW_HEIGHT - 4);
+        ctx.fillRect(drawX, ny + 2, 4, rowHeight - 4);
       }
 
       if (isSelected) {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.roundRect(drawX + 0.5, ny + 2.5, drawW - 1, ROW_HEIGHT - 5, 4);
+        ctx.roundRect(drawX + 0.5, ny + 2.5, drawW - 1, rowHeight - 5, 4);
         ctx.stroke();
         ctx.lineWidth = 1;
       }
@@ -727,7 +843,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       if (drawW >= 28) {
         ctx.fillStyle = !ownerSec || inChord ? '#091114' : '#f1f5f9';
         ctx.font = '600 10px "JetBrains Mono", monospace';
-        ctx.fillText(midiToNoteName(note.pitch), drawX + 6, ny + ROW_HEIGHT - 6);
+        ctx.fillText(midiToNoteName(note.pitch), drawX + 6, ny + rowHeight - 6);
       }
     }
 
@@ -811,17 +927,17 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     ctx.fillRect(0, 0, KEY_WIDTH, height);
     for (let pitch = MIN_PITCH; pitch <= MAX_PITCH; pitch++) {
       const y = pitchToY(pitch);
-      if (y + ROW_HEIGHT < RULER_HEIGHT || y > height) continue;
+      if (y + rowHeight < RULER_HEIGHT || y > height) continue;
       const black = isBlackKey(pitch);
       const pc = toPitchClass(pitch);
       const inScale = showGuides && activeScaleSet.has(pc);
 
       ctx.fillStyle = black ? '#191d28' : '#262b38';
-      ctx.fillRect(0, y, KEY_WIDTH - 1, ROW_HEIGHT - 1);
+      ctx.fillRect(0, y, KEY_WIDTH - 1, rowHeight - 1);
 
       if (inScale) {
         ctx.fillStyle = 'rgba(52, 211, 153, 0.35)';
-        ctx.fillRect(KEY_WIDTH - 5, y + 2, 4, ROW_HEIGHT - 4);
+        ctx.fillRect(KEY_WIDTH - 5, y + 2, 4, rowHeight - 4);
       }
 
       if (pc === 0 || !black) {
@@ -830,7 +946,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
           pc === 0
             ? '600 10px "JetBrains Mono", monospace'
             : '400 9px "JetBrains Mono", monospace';
-        ctx.fillText(midiToNoteName(pitch), 8, y + ROW_HEIGHT - 6);
+        ctx.fillText(midiToNoteName(pitch), 8, y + rowHeight - 6);
       }
     }
 
@@ -854,7 +970,9 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         onMouseUp={finishDrag}
         onMouseLeave={finishDrag}
         onContextMenu={(e) => e.preventDefault()}
-        onWheel={handleWheel}
+        onAuxClick={(e) => {
+          if (e.button === 1) e.preventDefault();
+        }}
       />
     </div>
   );
