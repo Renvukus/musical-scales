@@ -4,8 +4,8 @@ import { rankScales } from './scaleAnalyzer';
 
 /**
  * Splits a composition into bar-aligned chord sections, automatically merging
- * consecutive bars when they form a strong, cohesive chord together (or when
- * a trailing bar is empty/silent).
+ * consecutive bars when they form a cohesive chord together while prioritizing
+ * consistent harmonic rhythm (matching the previous chord section's bar length).
  */
 export function suggestInitialSections(
   notes: Note[],
@@ -40,6 +40,8 @@ export function suggestInitialSections(
   for (let b = 1; b < barCount; b++) {
     const curr = merged[merged.length - 1];
     const currSpanBars = curr.endBar - curr.startBar;
+    const prevSeg = merged.length >= 2 ? merged[merged.length - 2] : undefined;
+    const prevSpanBars = prevSeg ? prevSeg.endBar - prevSeg.startBar : undefined;
     const nextBarAnalysis = barAnalyses[b];
 
     const currStartBeat = curr.startBar * beatsPerBar;
@@ -62,7 +64,7 @@ export function suggestInitialSections(
       continue;
     }
 
-    // 2. Leading silence followed by notes: keep a fresh chord boundary where notes begin
+    // 2. Leading silence followed by notes: start a fresh chord boundary where notes begin
     if (currAnalysis.noteCount === 0) {
       merged.push({ startBar: b, endBar: b + 1 });
       continue;
@@ -71,17 +73,52 @@ export function suggestInitialSections(
     const currTop = currAnalysis.topChord;
     const nextTop = nextBarAnalysis.topChord;
 
-    // 3. Exact same detected chord in both -> merge cleanly (up to 8 bars)
+    // 3. Exact same detected chord -> merge cleanly (up to 8 bars)
     if (currTop && nextTop && currTop.id === nextTop.id && currSpanBars < 8) {
       curr.endBar = b + 1;
       continue;
     }
 
-    // 4. Otherwise test if combining into one chord still fits well (cap at 4 bars).
-    //    If both bars already have distinct bass notes and strong individual chords
-    //    (e.g. Am -> Fmaj7), keep them separate instead of collapsing into a 7th chord.
-    const currBassPc = currAnalysis.bassPitch !== undefined ? currAnalysis.bassPitch % 12 : undefined;
-    const nextBassPc = nextBarAnalysis.bassPitch !== undefined ? nextBarAnalysis.bassPitch % 12 : undefined;
+    // 4. Harmonic rhythm consistency: if the previous section was N bars (e.g. 2 bars)
+    //    and we haven't reached N bars yet, prioritize testing whether the full N-bar
+    //    window works cleanly as one chord.
+    if (
+      prevSpanBars &&
+      prevSpanBars > 1 &&
+      currSpanBars < prevSpanBars &&
+      curr.startBar + prevSpanBars <= barCount &&
+      currTop &&
+      nextTop
+    ) {
+      const targetEndBeat = (curr.startBar + prevSpanBars) * beatsPerBar;
+      const targetAnalysis = analyzeSection(
+        { id: 'tmp-rhythm', start: currStartBeat, end: targetEndBeat },
+        notes,
+        timeSignature,
+        topScale,
+      );
+      const targetTop = targetAnalysis.topChord;
+      if (targetTop && targetTop.noteFit >= 0.72 && targetTop.score >= 58) {
+        curr.endBar = b + 1;
+        continue;
+      }
+    }
+
+    // 5. If we already matched the previous section's bar length, prefer keeping
+    //    that steady harmonic rhythm rather than loosely absorbing a different chord.
+    if (prevSpanBars && currSpanBars >= prevSpanBars) {
+      merged.push({ startBar: b, endBar: b + 1 });
+      continue;
+    }
+
+    // 6. General merge check when no prior rhythm is established yet (e.g. first chord)
+    //    Avoid collapsing two distinct bass-anchored chords (e.g. Am -> Fmaj7).
+    const currBassPc =
+      currAnalysis.bassPitch !== undefined ? currAnalysis.bassPitch % 12 : undefined;
+    const nextBassPc =
+      nextBarAnalysis.bassPitch !== undefined
+        ? nextBarAnalysis.bassPitch % 12
+        : undefined;
     const distinctStrongBass =
       currBassPc !== undefined &&
       nextBassPc !== undefined &&

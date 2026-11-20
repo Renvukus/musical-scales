@@ -43,6 +43,39 @@ describe('MIDI File Codec (.mid)', () => {
     expect(restored.sections[1]).toMatchObject({ start: 8, end: Infinity });
   });
 
+  it('prioritizes matching the previous chord length (e.g. 2-bar harmonic rhythm)', () => {
+    const comp = {
+      ...PRESETS[0].composition,
+      totalBeats: 24, // 6 bars: 2 bars C, 2 bars Am (with passing tone), 2 bars F
+      notes: [
+        // Bars 1–2: C major (2 bars)
+        { id: 'c1', pitch: 48, start: 0, duration: 4, velocity: 0.8 },
+        { id: 'c2', pitch: 52, start: 0, duration: 4, velocity: 0.8 },
+        { id: 'c3', pitch: 55, start: 4, duration: 4, velocity: 0.8 },
+        { id: 'c4', pitch: 60, start: 4, duration: 4, velocity: 0.8 },
+        // Bars 3–4: Am with a brief non-chord passing tone (D4) in bar 4
+        { id: 'a1', pitch: 45, start: 8, duration: 4, velocity: 0.8 },
+        { id: 'a2', pitch: 52, start: 8, duration: 4, velocity: 0.8 },
+        { id: 'a3', pitch: 60, start: 8, duration: 4, velocity: 0.8 },
+        { id: 'a4', pitch: 57, start: 12, duration: 3, velocity: 0.8 },
+        { id: 'a5', pitch: 64, start: 12, duration: 3, velocity: 0.8 },
+        { id: 'a6', pitch: 62, start: 15, duration: 1, velocity: 0.6 }, // D4 passing tone
+        // Bars 5–6: F major (2 bars)
+        { id: 'f1', pitch: 53, start: 16, duration: 4, velocity: 0.8 },
+        { id: 'f2', pitch: 57, start: 16, duration: 4, velocity: 0.8 },
+        { id: 'f3', pitch: 60, start: 20, duration: 4, velocity: 0.8 },
+        { id: 'f4', pitch: 65, start: 20, duration: 4, velocity: 0.8 },
+      ],
+    };
+    const bytes = exportCompositionToMidi(comp);
+    const restored = importMidiToComposition(bytes, 'SteadyTwoBar.mid');
+
+    expect(restored.sections.length).toBe(3);
+    expect(restored.sections[0]).toMatchObject({ start: 0, end: 8 });
+    expect(restored.sections[1]).toMatchObject({ start: 8, end: 16 });
+    expect(restored.sections[2]).toMatchObject({ start: 16, end: Infinity });
+  });
+
   it('spans the full length of long MIDI files (>32 bars) without capping at 32 bars', () => {
     const longComp = {
       ...PRESETS[0].composition,
