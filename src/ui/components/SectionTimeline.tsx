@@ -20,7 +20,6 @@ interface SectionTimelineProps {
     snap: SnapGrid,
     commit: boolean,
   ) => void;
-  onDeleteSection: (sectionId: string) => void;
 }
 
 export const SectionTimeline: React.FC<SectionTimelineProps> = ({
@@ -34,7 +33,6 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
   onSelectSection,
   onSplitSection,
   onMoveBoundary,
-  onDeleteSection,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const sorted = [...sections].sort((a, b) => a.start - b.start);
@@ -127,13 +125,13 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
             ? {
                 left: `${leftPx}px`,
                 right: '0px',
-                minWidth: '48px',
+                minWidth: '16px',
                 borderRadius: '0',
                 borderRight: 'none',
               }
             : {
                 left: `${leftPx}px`,
-                width: `${Math.max(24, finiteWidthPx - 2)}px`,
+                width: `${Math.max(6, finiteWidthPx - 2)}px`,
               };
 
           return (
@@ -158,44 +156,31 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
                 <div className={`section-left-edge-bar bg-fn-${fn} fn-${fn}`} />
               </div>
 
-              <div className="section-block-top">
-                <span className="section-chord-label">
-                  {chosenChord ? chosenChord.symbol : '—'}
-                  {section.selectedChordId ? ' ★' : ''}
-                </span>
-                {chosenChord && (
-                  <span className={`section-roman fn-${fn}`}>
-                    {chosenChord.romanNumeral}
+              <div className="section-block-content">
+                <div className="section-block-top">
+                  <span className="section-chord-label">
+                    {chosenChord ? chosenChord.symbol : '—'}
+                    {section.selectedChordId ? ' ★' : ''}
                   </span>
-                )}
-              </div>
-              <div className="section-meta">
-                <span>
+                  {chosenChord && (
+                    <span className={`section-roman fn-${fn}`}>
+                      {chosenChord.romanNumeral}
+                    </span>
+                  )}
+                </div>
+                <div className="section-meta">
                   {secAnalysis?.noteCount ? (
                     chosenChord && chosenChord.outsideNoteCount > 0 ? (
                       <span style={{ color: getFitTextColor(chosenChord.noteFit) }}>
                         {Math.round(chosenChord.noteFit * 100)}% ({chosenChord.outsideNoteCount} out)
                       </span>
                     ) : (
-                      `${chosenChord?.score ?? 0}% fit`
+                      <span>{chosenChord?.score ?? 0}% fit</span>
                     )
                   ) : (
-                    'empty'
+                    <span>empty</span>
                   )}
-                </span>
-                {sorted.length > 1 && (
-                  <button
-                    className="section-merge-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteSection(section.id);
-                    }}
-                    title="Delete chord section (merges into later chord)"
-                    aria-label="Delete section"
-                  >
-                    ×
-                  </button>
-                )}
+                </div>
               </div>
             </div>
           );

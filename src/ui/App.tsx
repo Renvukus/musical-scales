@@ -328,7 +328,6 @@ export const App: React.FC = () => {
                 commit,
               })
             }
-            onDeleteSection={handleDeleteSection}
           />
 
           <PianoRoll

@@ -38,8 +38,8 @@ interface PianoRollProps {
 const KEY_WIDTH = 62;
 const RULER_HEIGHT = 24;
 const DEFAULT_ROW_HEIGHT = 20;
-const MIN_PITCH = 36; // C2
-const MAX_PITCH = 84; // C6
+const MIN_PITCH = 12; // C0
+const MAX_PITCH = 108; // C8
 
 const FN_COLORS: Record<HarmonicFunction, { fill: string; ghost: string; stroke: string }> = {
   tonic: {
