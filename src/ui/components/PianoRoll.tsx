@@ -1061,12 +1061,13 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
               ? palette.fill
               : '#64748b'
             : '#94a3b8';
-      const velAlpha = 0.56 + 0.44 * Math.max(0.05, Math.min(1, note.velocity));
+      const clampedVel = Math.max(0.05, Math.min(1, note.velocity));
+      const velAlpha = 0.24 + 0.76 * clampedVel;
       ctx.globalAlpha = isMuted
         ? isSelected
-          ? 0.78
-          : 0.56
-        : isNoteSounding || isSelected
+          ? 0.75
+          : 0.5
+        : isNoteSounding
           ? 1
           : velAlpha;
       ctx.beginPath();
@@ -1074,18 +1075,11 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // Subtle bottom velocity indicator bar inside unmuted notes
-      if (!isMuted && !isNoteSounding && rowHeight >= 12 && drawW >= 10) {
-        const velBarW = Math.max(2, (drawW - 4) * Math.max(0.05, Math.min(1, note.velocity)));
-        ctx.fillStyle = 'rgba(9, 17, 20, 0.32)';
-        ctx.fillRect(drawX + 2, ny + rowHeight - 5, drawW - 4, 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-        ctx.fillRect(drawX + 2, ny + rowHeight - 5, velBarW, 2);
-      }
-
       if (!isMuted && ownerSec && !inChord && showGuides && !isNoteSounding) {
         ctx.fillStyle = '#e29578';
+        ctx.globalAlpha = velAlpha;
         ctx.fillRect(drawX, ny + 2, 4, rowHeight - 4);
+        ctx.globalAlpha = 1;
       }
 
       if (isMuted) {
@@ -1110,9 +1104,13 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       if (rowHeight >= 11 && drawW >= noteFontSize * 2.6) {
         ctx.fillStyle = isMuted
           ? '#94a3b8'
-          : isNoteSounding || !ownerSec || inChord
+          : isNoteSounding
             ? '#091114'
-            : '#f1f5f9';
+            : clampedVel < 0.42
+              ? '#e2e8f0'
+              : !ownerSec || inChord
+                ? '#091114'
+                : '#f1f5f9';
         ctx.font = `600 ${noteFontSize}px "JetBrains Mono", monospace`;
         ctx.textBaseline = 'middle';
         const label = isMuted ? `✕ ${midiToNoteName(note.pitch)}` : midiToNoteName(note.pitch);
