@@ -172,7 +172,7 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
                 <span>
                   {secAnalysis?.noteCount
                     ? chosenChord && chosenChord.outsideNoteCount > 0
-                      ? `${chosenChord.outsideNoteCount} out`
+                      ? `${chosenChord.outsideNoteCount} out (${Math.round((1 - chosenChord.noteFit) * 100)}%)`
                       : `${chosenChord?.score ?? 0}% fit`
                     : 'empty'}
                 </span>

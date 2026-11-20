@@ -25,6 +25,7 @@ export const App: React.FC = () => {
   const [snap, setSnap] = useState<SnapGrid>(0.5);
   const [patch, setPatch] = useState<SynthPatch>('epiano');
   const [showGuides, setShowGuides] = useState(true);
+  const [chordPreview, setChordPreview] = useState(false);
   const [loop, setLoop] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadBeat, setPlayheadBeat] = useState(0);
@@ -37,6 +38,7 @@ export const App: React.FC = () => {
   const [inspectedScale, setInspectedScale] = useState<ScaleCandidate | undefined>();
   const [hoveredScale, setHoveredScale] = useState<ScaleCandidate | undefined>();
   const playbackOriginRef = React.useRef<number>(0);
+  const lastPreviewSectionRef = React.useRef<string | null>(null);
 
   // Real-time harmonic analysis (pure, memoized)
   const analysis = useMemo(() => analyzeComposition(composition), [composition]);
@@ -68,6 +70,55 @@ export const App: React.FC = () => {
 
   const displayedScale = hoveredScale ?? inspectedScale ?? analysis.activeScale;
 
+  // Auto-play each chord section whenever playback enters a new section (if Chord Preview is On)
+  useEffect(() => {
+    if (!isPlaying || !chordPreview) {
+      lastPreviewSectionRef.current = null;
+      return;
+    }
+    const currentSec = composition.sections.find(
+      (s) => playheadBeat >= s.start && playheadBeat < s.end,
+    );
+    if (!currentSec || currentSec.id === lastPreviewSectionRef.current) return;
+    lastPreviewSectionRef.current = currentSec.id;
+
+    const secAnalysis = analysis.sections[currentSec.id];
+    const chosen =
+      (currentSec.selectedChordId
+        ? secAnalysis?.candidates.find((c) => c.id === currentSec.selectedChordId)
+        : undefined) ?? secAnalysis?.topChord;
+    if (!chosen) return;
+
+    const baseMidi = 48 + chosen.rootPc;
+    const pitches = chosen.definition.intervals.map((semi) => baseMidi + semi);
+    const secBeats = Number.isFinite(currentSec.end)
+      ? Math.max(0.5, currentSec.end - currentSec.start)
+      : composition.timeSignature.numerator;
+    const durSec = Math.min(2.2, (secBeats * 60) / composition.tempo);
+    audioEngine.playChord(pitches, durSec, 0.52);
+  }, [
+    isPlaying,
+    chordPreview,
+    playheadBeat,
+    composition.sections,
+    composition.tempo,
+    composition.timeSignature.numerator,
+    analysis.sections,
+  ]);
+
+  const handleDeleteSection = useCallback(
+    (sectionId: string) => {
+      const sorted = [...composition.sections].sort((a, b) => a.start - b.start);
+      if (sorted.length <= 1) return;
+      const idx = sorted.findIndex((s) => s.id === sectionId);
+      const nextActive = idx > 0 ? sorted[idx - 1].id : sorted[1]?.id;
+      dispatch({ type: 'DELETE_SECTION', sectionId });
+      if (nextActive) setActiveSectionId(nextActive);
+      setInspectedChord(undefined);
+    },
+    [composition.sections],
+  );
+
   // Compute playable end beat strictly from notes (never capped by chord sections)
   const getPlaybackEndBeat = useCallback(
     (fromBeat: number) => {
@@ -89,6 +140,7 @@ export const App: React.FC = () => {
   const startPlayback = useCallback(
     (fromBeat: number) => {
       playbackOriginRef.current = fromBeat;
+      lastPreviewSectionRef.current = null;
       setIsPlaying(true);
       const endBeat = getPlaybackEndBeat(fromBeat);
       audioEngine.start({
@@ -151,12 +203,12 @@ export const App: React.FC = () => {
           (!mod && !e.altKey && e.key.toLowerCase() === 'x'))
       ) {
         e.preventDefault();
-        dispatch({ type: 'DELETE_SECTION', sectionId: activeSection.id });
+        handleDeleteSection(activeSection.id);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleTogglePlay, sectionFocused, activeSection]);
+  }, [handleTogglePlay, sectionFocused, activeSection, handleDeleteSection]);
 
   // Stop audio on unmount
   useEffect(() => () => audioEngine.stop(), []);
@@ -217,6 +269,7 @@ export const App: React.FC = () => {
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         showGuides={showGuides}
+        chordPreview={chordPreview}
         onTogglePlay={handleTogglePlay}
         onStop={handleStop}
         onToggleLoop={() => setLoop((l) => !l)}
@@ -229,6 +282,7 @@ export const App: React.FC = () => {
         onUndo={() => dispatch({ type: 'UNDO' })}
         onRedo={() => dispatch({ type: 'REDO' })}
         onToggleGuides={() => setShowGuides((g) => !g)}
+        onToggleChordPreview={() => setChordPreview((p) => !p)}
         onSelectPreset={(id) => {
           const preset = PRESETS.find((p) => p.id === id);
           if (!preset) return;
@@ -269,9 +323,7 @@ export const App: React.FC = () => {
                 commit,
               })
             }
-            onDeleteSection={(id) =>
-              dispatch({ type: 'DELETE_SECTION', sectionId: id })
-            }
+            onDeleteSection={handleDeleteSection}
           />
 
           <PianoRoll
@@ -289,6 +341,7 @@ export const App: React.FC = () => {
             onPixelsPerBeatChange={setPixelsPerBeat}
             onSeek={(beat) => {
               playbackOriginRef.current = beat;
+              lastPreviewSectionRef.current = null;
               setPlayheadBeat(beat);
               if (isPlaying) startPlayback(beat);
             }}
@@ -297,12 +350,26 @@ export const App: React.FC = () => {
               setInspectedChord(undefined);
             }}
             onFocusNotes={() => setSectionFocused(false)}
-            onAddNote={(note) => dispatch({ type: 'ADD_NOTE', note })}
-            onAddNotes={(notes) => dispatch({ type: 'ADD_NOTES', notes })}
-            onUpdateNotes={(notes, commit) =>
-              dispatch({ type: 'UPDATE_NOTES', notes, commit })
-            }
-            onDeleteNotes={(ids) => dispatch({ type: 'DELETE_NOTES', ids })}
+            onAddNote={(note) => {
+              setInspectedChord(undefined);
+              dispatch({ type: 'ADD_NOTE', note });
+            }}
+            onAddNotes={(notes) => {
+              setInspectedChord(undefined);
+              dispatch({ type: 'ADD_NOTES', notes });
+            }}
+            onPatchNotes={(patches, commit) => {
+              setInspectedChord(undefined);
+              dispatch({ type: 'PATCH_NOTES', patches, commit });
+            }}
+            onUpdateNotes={(notes, commit) => {
+              setInspectedChord(undefined);
+              dispatch({ type: 'UPDATE_NOTES', notes, commit });
+            }}
+            onDeleteNotes={(ids) => {
+              setInspectedChord(undefined);
+              dispatch({ type: 'DELETE_NOTES', ids });
+            }}
           />
 
           <footer className="editor-statusbar">
@@ -348,7 +415,12 @@ export const App: React.FC = () => {
                         : 'pill-outside'
                     }`}
                   >
-                    {analysis.activeScale.score}% · {analysis.activeScale.outsideNoteCount} out
+                    {analysis.activeScale.score}% ·{' '}
+                    {analysis.activeScale.outsideNoteCount === 0
+                      ? '0 out'
+                      : `${analysis.activeScale.outsideNoteCount} out (${Math.round(
+                          (1 - analysis.activeScale.coverage) * 100,
+                        )}%)`}
                   </span>
                 )}
               </div>

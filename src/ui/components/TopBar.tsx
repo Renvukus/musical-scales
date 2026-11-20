@@ -13,6 +13,7 @@ interface TopBarProps {
   canUndo: boolean;
   canRedo: boolean;
   showGuides: boolean;
+  chordPreview: boolean;
   onTogglePlay: () => void;
   onStop: () => void;
   onToggleLoop: () => void;
@@ -22,6 +23,7 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onToggleGuides: () => void;
+  onToggleChordPreview: () => void;
   onSelectPreset: (presetId: string) => void;
   onImportMidi: (file: File) => void;
   onExportMidi: () => void;
@@ -36,6 +38,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   canUndo,
   canRedo,
   showGuides,
+  chordPreview,
   onTogglePlay,
   onStop,
   onToggleLoop,
@@ -45,6 +48,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onUndo,
   onRedo,
   onToggleGuides,
+  onToggleChordPreview,
   onSelectPreset,
   onImportMidi,
   onExportMidi,
@@ -137,6 +141,15 @@ export const TopBar: React.FC<TopBarProps> = ({
           title="Toggle scale & chord ghost note highlights on piano roll"
         >
           Guides: {showGuides ? 'On' : 'Off'}
+        </button>
+
+        <button
+          id="btn-chord-preview"
+          className={`btn ${chordPreview ? 'btn-active' : ''}`}
+          onClick={onToggleChordPreview}
+          title="Auto-play each section's chord whenever the playhead enters a new chord"
+        >
+          ♪ Preview: {chordPreview ? 'On' : 'Off'}
         </button>
       </div>
 

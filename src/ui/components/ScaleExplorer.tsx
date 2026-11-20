@@ -101,7 +101,7 @@ export const ScaleExplorer: React.FC<ScaleExplorerProps> = ({
                     className="pill pill-outside"
                     title={`Outside notes: ${scale.outsidePitchNames.join(', ')}`}
                   >
-                    {scale.outsideNoteCount} out
+                    {scale.outsideNoteCount} out ({Math.round((1 - scale.coverage) * 100)}%)
                   </span>
                 )}
                 <button

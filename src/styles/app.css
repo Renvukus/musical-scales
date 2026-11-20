@@ -636,10 +636,10 @@ select option {
   color: var(--text-secondary);
 }
 
-/* Contextual Theory Inspector (Always visible at bottom of sidebar) */
+/* Contextual Theory Inspector (Fixed height so hovering/selecting never shifts layout) */
 .theory-inspector {
   flex-shrink: 0;
-  max-height: 44%;
+  height: 255px;
   overflow-y: auto;
   padding: 12px 14px 14px;
   background: #12151d;

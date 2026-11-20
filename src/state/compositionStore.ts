@@ -17,6 +17,7 @@ export type CompositionAction =
   | { type: 'ADD_NOTES'; notes: Note[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
   | { type: 'UPDATE_NOTES'; notes: Note[]; commit?: boolean }
+  | { type: 'PATCH_NOTES'; patches: Array<{ id: string; start?: number; duration?: number; pitch?: number }>; commit?: boolean }
   | { type: 'SELECT_SCALE'; scaleId?: string }
   | { type: 'SELECT_SECTION_CHORD'; sectionId: string; chordId?: string }
   | { type: 'SPLIT_SECTION'; beat: number; snap?: number }
@@ -118,6 +119,25 @@ export function compositionReducer(
         : pushHistory(state, next);
     }
 
+    case 'PATCH_NOTES': {
+      const patchMap = new Map(action.patches.map((p) => [p.id, p]));
+      const notes = comp.notes.map((n) => {
+        const p = patchMap.get(n.id);
+        if (!p) return n;
+        return {
+          ...n,
+          start: p.start !== undefined ? p.start : n.start,
+          duration: p.duration !== undefined ? p.duration : n.duration,
+          pitch: p.pitch !== undefined ? p.pitch : n.pitch,
+        };
+      });
+      const totalBeats = computeTotalBeats(comp, notes, comp.sections);
+      const next = { ...comp, notes, totalBeats };
+      return action.commit === false
+        ? replacePresent(state, next)
+        : pushHistory(state, next);
+    }
+
     case 'SELECT_SCALE':
       return replacePresent(state, {
         ...comp,
@@ -192,18 +212,18 @@ export function compositionReducer(
       if (idx === -1) return state;
 
       let sections: Section[];
-      if (idx < sorted.length - 1) {
-        // Delete this chord's left edge and merge its span into the later chord
-        const deleted = sorted[idx];
-        const nextSec = { ...sorted[idx + 1], start: deleted.start };
+      if (idx > 0) {
+        // Delete this chord's left edge: previous chord naturally continues until the next chord's left edge
+        const prevSec = { ...sorted[idx - 1], end: sorted[idx].end };
         sections = [
-          ...sorted.slice(0, idx),
-          nextSec,
-          ...sorted.slice(idx + 2),
+          ...sorted.slice(0, idx - 1),
+          prevSec,
+          ...sorted.slice(idx + 1),
         ];
       } else {
-        // Last chord section: remove it so the previous chord extends to Infinity
-        sections = sorted.slice(0, idx);
+        // First chord at beat 0: remove it and let the next chord begin at beat 0
+        const nextSec = { ...sorted[1], start: 0 };
+        sections = [nextSec, ...sorted.slice(2)];
       }
       return pushHistory(state, { ...comp, sections: normalizeSections(sections) });
     }

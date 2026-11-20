@@ -27,6 +27,10 @@ interface PianoRollProps {
   onFocusNotes: () => void;
   onAddNote: (note: Note) => void;
   onAddNotes: (notes: Note[]) => void;
+  onPatchNotes: (
+    patches: Array<{ id: string; start?: number; duration?: number; pitch?: number }>,
+    commit: boolean,
+  ) => void;
   onUpdateNotes: (notes: Note[], commit: boolean) => void;
   onDeleteNotes: (ids: string[]) => void;
 }
@@ -107,6 +111,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   onFocusNotes,
   onAddNote,
   onAddNotes,
+  onPatchNotes,
   onUpdateNotes,
   onDeleteNotes,
 }) => {
@@ -231,12 +236,15 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       }
 
       // Default scroll wheel -> horizontal zoom anchored under cursor
-      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const factor = e.deltaY < 0 ? 1.18 : 0.84;
       const rawNext = cur.pixelsPerBeat * factor;
-      const nextPpb = Math.max(
-        6,
-        Math.min(240, factor > 1 ? Math.ceil(rawNext) : Math.floor(rawNext)),
-      );
+      const rounded =
+        rawNext < 16
+          ? Math.round(rawNext * 100) / 100
+          : factor > 1
+            ? Math.ceil(rawNext)
+            : Math.floor(rawNext);
+      const nextPpb = Math.max(0.5, Math.min(240, rounded));
       if (nextPpb !== cur.pixelsPerBeat) {
         const anchorX = Math.max(0, x - KEY_WIDTH);
         const anchorBeat = (anchorX + cur.scrollX) / cur.pixelsPerBeat;
@@ -625,10 +633,10 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         drag.pitch = currPitch;
         audioEngine.playNote(currPitch, 0.25, 0.75);
       }
-      const updated = composition.notes.map((n) =>
-        n.id === drag.noteId ? { ...n, duration: nextDuration, pitch: currPitch } : n,
+      onPatchNotes(
+        [{ id: drag.noteId, duration: nextDuration, pitch: currPitch }],
+        false,
       );
-      onUpdateNotes(updated, false);
       return;
     }
 
@@ -636,10 +644,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       canvas.style.cursor = 'ew-resize';
       const delta = currBeat - drag.originBeat;
       const nextDuration = Math.max(snap, snapBeat(drag.initialDuration + delta));
-      const updated = composition.notes.map((n) =>
-        n.id === drag.noteId ? { ...n, duration: nextDuration } : n,
-      );
-      onUpdateNotes(updated, false);
+      onPatchNotes([{ id: drag.noteId, duration: nextDuration }], false);
       return;
     }
 
@@ -651,16 +656,15 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         drag.lastPreviewPitch = currPitch;
         audioEngine.playNote(currPitch, 0.2, 0.65);
       }
-      const updated = composition.notes.map((n) => {
-        const init = drag.initialNotes.get(n.id);
-        if (!init) return n;
-        return {
-          ...n,
+      const patches: Array<{ id: string; start: number; pitch: number }> = [];
+      for (const [id, init] of drag.initialNotes.entries()) {
+        patches.push({
+          id,
           start: Math.max(0, roundClean(init.start + deltaBeat)),
           pitch: Math.max(MIN_PITCH, Math.min(MAX_PITCH, init.pitch + deltaPitch)),
-        };
-      });
-      onUpdateNotes(updated, false);
+        });
+      }
+      onPatchNotes(patches, false);
     }
   };
 
@@ -817,8 +821,12 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       ctx.stroke();
     }
 
-    // 3b. Beat and Bar structural lines
-    for (let b = startBeatVis; b <= renderMaxBeat; b += 1) {
+    // 3b. Beat and Bar structural lines (adaptive spacing when zoomed way out)
+    const barPx = beatsPerBar * pixelsPerBeat;
+    const barGridStep = Math.pow(2, Math.max(0, Math.ceil(Math.log2(14 / Math.max(0.5, barPx)))));
+    const beatStep = pixelsPerBeat >= 8 ? 1 : beatsPerBar * barGridStep;
+    const alignedStart = Math.floor(startBeatVis / beatStep) * beatStep;
+    for (let b = alignedStart; b <= renderMaxBeat; b += beatStep) {
       const x = Math.floor(beatToX(b)) + 0.5;
       if (x < KEY_WIDTH || x > width) continue;
       const isBar = b % beatsPerBar === 0;
@@ -938,10 +946,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     }
 
     ctx.font = '500 10px "JetBrains Mono", monospace';
-    const barPx = beatsPerBar * pixelsPerBeat;
-    const barLabelStep = barPx < 22 ? 4 : barPx < 44 ? 2 : 1;
+    const barLabelStep = Math.pow(
+      2,
+      Math.max(0, Math.ceil(Math.log2(42 / Math.max(0.5, barPx)))),
+    );
     const showBeatLabels = pixelsPerBeat >= 26;
-    for (let b = startBeatVis; b <= renderMaxBeat; b += 1) {
+    const rulerStep = showBeatLabels ? 1 : beatsPerBar * barLabelStep;
+    const rulerStart = Math.floor(startBeatVis / rulerStep) * rulerStep;
+    for (let b = rulerStart; b <= renderMaxBeat; b += rulerStep) {
       const x = beatToX(b);
       if (x < KEY_WIDTH - 10 || x > width) continue;
       if (b % beatsPerBar === 0) {

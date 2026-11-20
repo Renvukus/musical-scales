@@ -113,7 +113,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
                     className="pill pill-outside"
                     title={`Outside notes: ${autoChord.outsidePitchNames.join(', ')}`}
                   >
-                    {autoChord.outsideNoteCount} out
+                    {autoChord.outsideNoteCount} out ({Math.round((1 - autoChord.noteFit) * 100)}%)
                   </span>
                 ))}
               <button
@@ -153,6 +153,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
       {topCandidates.map((chord) => {
         const isPinned = chord.id === section.selectedChordId;
         const fn = chord.harmonicFunction;
+        const outPct = Math.round((1 - chord.noteFit) * 100);
 
         return (
           <div
@@ -160,7 +161,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
             className={`candidate-row ${isPinned ? 'is-selected' : ''}`}
             onMouseEnter={() => onHoverChord(chord)}
             onClick={() => {
-              onSelectChord(section.id, isPinned ? undefined : chord.id);
+              onSelectChord(section.id, chord.id);
               onInspectChord(chord);
               const baseMidi = 48 + chord.rootPc;
               audioEngine.playChord(
@@ -201,7 +202,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
                       className="pill pill-outside"
                       title={`Outside notes: ${chord.outsidePitchNames.join(', ')}`}
                     >
-                      {chord.outsideNoteCount} out
+                      {chord.outsideNoteCount} out ({outPct}%)
                     </span>
                   ))}
                 <button
