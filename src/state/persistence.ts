@@ -139,7 +139,7 @@ interface FilePickerWindow extends Window {
  * to a direct Blob download, exporting the full Harmonia project including all
  * notes, chord splits, pinned chords, and scale selection.
  */
-export async function saveProjectAsFile(composition: Composition): Promise<void> {
+export async function saveProjectAsFile(composition: Composition): Promise<boolean> {
   const json = serializeProject(composition);
   const blob = new Blob([json], { type: 'application/json' });
   const baseName = (composition.title || 'harmonia-project')
@@ -162,10 +162,10 @@ export async function saveProjectAsFile(composition: Composition): Promise<void>
       const writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
-      return;
+      return true;
     } catch (err) {
       // User cancelled the Save As dialog
-      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (err instanceof DOMException && err.name === 'AbortError') return false;
     }
   }
 
@@ -176,4 +176,5 @@ export async function saveProjectAsFile(composition: Composition): Promise<void>
   a.download = suggestedName;
   a.click();
   URL.revokeObjectURL(url);
+  return true;
 }

@@ -37,6 +37,7 @@ interface TopBarProps {
   onToggleGuides: () => void;
   onToggleChordPreview: () => void;
   onSelectPreset: (presetId: string) => void;
+  onNewProject: () => void;
   onImportMidi: (file: File) => void;
   onExportMidi: () => void;
 }
@@ -66,6 +67,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleGuides,
   onToggleChordPreview,
   onSelectPreset,
+  onNewProject,
   onImportMidi,
   onExportMidi,
 }) => {
@@ -286,6 +288,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             e.target.value = '';
           }}
         />
+        <button
+          id="btn-new-project"
+          className="btn"
+          onClick={onNewProject}
+          title="Start a new empty project"
+        >
+          + New
+        </button>
         <button
           id="btn-import-midi"
           className="btn"

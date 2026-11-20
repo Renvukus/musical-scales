@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { audioEngine, type SynthPatch } from '../audio';
-import type { SnapGrid } from '../domain/music';
+import type { Composition, SnapGrid } from '../domain/music';
 import type { ChordCandidate, ScaleCandidate } from '../domain/theory';
 import { exportCompositionToMidi, importMidiToComposition } from '../midi';
 import { compositionReducer, createInitialHistory } from '../state/compositionStore';
@@ -25,6 +25,31 @@ import { TopBar } from './components/TopBar';
 import { VelocityLane } from './components/VelocityLane';
 import { getFitPillStyle } from './fitColor';
 
+function createEmptyComposition(): Composition {
+  return {
+    title: 'Untitled Project',
+    tempo: 140,
+    timeSignature: { numerator: 4, denominator: 4 },
+    totalBeats: 16,
+    notes: [],
+    sections: [{ id: 'sec-1', start: 0, end: Infinity }],
+  };
+}
+
+function getCompFingerprint(c: Composition): string {
+  return JSON.stringify({
+    title: c.title,
+    tempo: c.tempo,
+    timeSignature: c.timeSignature,
+    selectedScaleId: c.selectedScaleId,
+    sections: c.sections.map((s) => ({
+      ...s,
+      end: Number.isFinite(s.end) ? s.end : null,
+    })),
+    notes: c.notes,
+  });
+}
+
 export const App: React.FC = () => {
   const [history, dispatch] = useReducer(compositionReducer, undefined, createInitialHistory);
   const composition = history.present;
@@ -45,6 +70,7 @@ export const App: React.FC = () => {
   const [pixelsPerBeat, setPixelsPerBeat] = useState(64);
   const [scrollX, setScrollX] = useState(0);
   const [isDraggingMidi, setIsDraggingMidi] = useState(false);
+  const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
 
   const [inspectedChord, setInspectedChord] = useState<ChordCandidate | undefined>();
   const [hoveredChord, setHoveredChord] = useState<ChordCandidate | undefined>();
@@ -52,6 +78,7 @@ export const App: React.FC = () => {
   const [hoveredScale, setHoveredScale] = useState<ScaleCandidate | undefined>();
   const playbackOriginRef = React.useRef<number>(0);
   const lastPreviewSectionRef = React.useRef<string | null>(null);
+  const lastDownloadedFpRef = React.useRef<string | null>(null);
 
   // Real-time harmonic analysis (pure, memoized)
   const analysis = useMemo(() => analyzeComposition(composition), [composition]);
@@ -211,7 +238,16 @@ export const App: React.FC = () => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void saveProjectAsFile(latestCompRef.current);
+        const current = latestCompRef.current;
+        void saveProjectAsFile(current).then((saved) => {
+          if (saved) lastDownloadedFpRef.current = getCompFingerprint(current);
+        });
+        return;
+      }
+
+      if (e.key === 'Escape' && showNewProjectDialog) {
+        e.preventDefault();
+        setShowNewProjectDialog(false);
         return;
       }
 
@@ -249,7 +285,14 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleTogglePlay, sectionFocused, activeSection, handleDeleteSection, displayedChord]);
+  }, [
+    handleTogglePlay,
+    sectionFocused,
+    activeSection,
+    handleDeleteSection,
+    displayedChord,
+    showNewProjectDialog,
+  ]);
 
   // Stop audio on unmount
   useEffect(() => () => audioEngine.stop(), []);
@@ -271,6 +314,40 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('beforeunload', flushSave);
   }, []);
 
+  const startEmptyProject = useCallback(() => {
+    const fresh = createEmptyComposition();
+    handleStop();
+    dispatch({ type: 'LOAD_COMPOSITION', composition: fresh });
+    setActiveSectionId('sec-1');
+    setInspectedChord(undefined);
+    setInspectedScale(undefined);
+    setSelectedNoteIds([]);
+    setScrollX(0);
+    lastDownloadedFpRef.current = getCompFingerprint(fresh);
+    setShowNewProjectDialog(false);
+  }, [handleStop]);
+
+  const handleRequestNewProject = useCallback(() => {
+    const current = latestCompRef.current;
+    const isEmpty = current.notes.length === 0;
+    const isAlreadyDownloaded =
+      lastDownloadedFpRef.current === getCompFingerprint(current);
+    if (isEmpty || isAlreadyDownloaded) {
+      startEmptyProject();
+    } else {
+      setShowNewProjectDialog(true);
+    }
+  }, [startEmptyProject]);
+
+  const handleSaveAndStartNew = async () => {
+    const current = latestCompRef.current;
+    const saved = await saveProjectAsFile(current);
+    if (saved) {
+      lastDownloadedFpRef.current = getCompFingerprint(current);
+      startEmptyProject();
+    }
+  };
+
   // Project (.harmonia.json) & MIDI (.mid) Import / Export handlers
   const handleImportMidiFile = async (file: File) => {
     try {
@@ -286,6 +363,7 @@ export const App: React.FC = () => {
         setActiveSectionId(loaded.sections[0]?.id ?? 'sec-1');
         setInspectedChord(undefined);
         setInspectedScale(undefined);
+        lastDownloadedFpRef.current = getCompFingerprint(loaded);
         return;
       }
 
@@ -370,6 +448,7 @@ export const App: React.FC = () => {
           setInspectedChord(undefined);
           setInspectedScale(undefined);
         }}
+        onNewProject={handleRequestNewProject}
         onImportMidi={handleImportMidiFile}
         onExportMidi={handleExportMidi}
       />
@@ -646,6 +725,50 @@ export const App: React.FC = () => {
         <div className="drop-overlay">
           <div className="drop-overlay-box">
             Drop a .mid or .harmonia.json file to load it into Harmonia
+          </div>
+        </div>
+      )}
+
+      {showNewProjectDialog && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-project-modal-title"
+          onClick={() => setShowNewProjectDialog(false)}
+        >
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <h2 id="new-project-modal-title" className="modal-title">
+              Save current project?
+            </h2>
+            <p className="modal-body">
+              <strong>{composition.title || 'Untitled Project'}</strong> hasn&apos;t been
+              downloaded since your latest changes. Would you like to save a{' '}
+              <code>.harmonia.json</code> copy before starting a blank canvas?
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowNewProjectDialog(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={startEmptyProject}
+              >
+                Discard &amp; New
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleSaveAndStartNew()}
+              >
+                Save &amp; New
+              </button>
+            </div>
           </div>
         </div>
       )}
