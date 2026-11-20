@@ -1,13 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SynthPatch } from '../../audio';
-import { SNAP_OPTIONS, type SnapGrid } from '../../domain/music';
+import { SNAP_OPTIONS, type SnapGrid, type TimeSignature } from '../../domain/music';
 import { PRESETS } from '../../state/presets';
+
+const TIME_SIGNATURES: TimeSignature[] = [
+  { numerator: 4, denominator: 4 },
+  { numerator: 3, denominator: 4 },
+  { numerator: 2, denominator: 4 },
+  { numerator: 5, denominator: 4 },
+  { numerator: 6, denominator: 8 },
+  { numerator: 6, denominator: 4 },
+];
 
 interface TopBarProps {
   title: string;
   isPlaying: boolean;
   loop: boolean;
   tempo: number;
+  timeSignature: TimeSignature;
   snap: SnapGrid;
   patch: SynthPatch;
   canUndo: boolean;
@@ -18,6 +28,7 @@ interface TopBarProps {
   onStop: () => void;
   onToggleLoop: () => void;
   onTempoChange: (tempo: number) => void;
+  onTimeSignatureChange: (ts: TimeSignature) => void;
   onSnapChange: (snap: SnapGrid) => void;
   onPatchChange: (patch: SynthPatch) => void;
   onUndo: () => void;
@@ -33,6 +44,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isPlaying,
   loop,
   tempo,
+  timeSignature,
   snap,
   patch,
   canUndo,
@@ -43,6 +55,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onStop,
   onToggleLoop,
   onTempoChange,
+  onTimeSignatureChange,
   onSnapChange,
   onPatchChange,
   onUndo,
@@ -138,6 +151,27 @@ export const TopBar: React.FC<TopBarProps> = ({
             }}
           />
         </label>
+
+        <select
+          id="select-time-sig"
+          className="control-select"
+          style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}
+          value={`${timeSignature.numerator}/${timeSignature.denominator}`}
+          onChange={(e) => {
+            const [num, den] = e.target.value.split('/').map(Number);
+            if (num && den) onTimeSignatureChange({ numerator: num, denominator: den });
+          }}
+          title="Time signature"
+        >
+          {TIME_SIGNATURES.map((ts) => {
+            const key = `${ts.numerator}/${ts.denominator}`;
+            return (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            );
+          })}
+        </select>
 
         <label className="control-field" title="Grid snap resolution">
           <span>Snap</span>

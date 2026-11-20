@@ -288,6 +288,7 @@ export const App: React.FC = () => {
         isPlaying={isPlaying}
         loop={loop}
         tempo={composition.tempo}
+        timeSignature={composition.timeSignature}
         snap={snap}
         patch={patch}
         canUndo={history.past.length > 0}
@@ -298,6 +299,9 @@ export const App: React.FC = () => {
         onStop={handleStop}
         onToggleLoop={() => setLoop((l) => !l)}
         onTempoChange={(tempo) => dispatch({ type: 'SET_TEMPO', tempo })}
+        onTimeSignatureChange={(timeSignature) =>
+          dispatch({ type: 'SET_TIME_SIGNATURE', timeSignature })
+        }
         onSnapChange={setSnap}
         onPatchChange={(p) => {
           setPatch(p);

@@ -792,7 +792,8 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const activeScaleSet = new Set<number>(analysis.activeScale?.pitchClasses ?? []);
-    const beatsPerBar = composition.timeSignature.numerator;
+    const beatsPerBar =
+      composition.timeSignature.numerator * (4 / composition.timeSignature.denominator);
     const visibleEndBeat = Math.ceil((width - KEY_WIDTH + scrollX) / pixelsPerBeat) + 2;
     const renderMaxBeat = Math.max(composition.totalBeats, visibleEndBeat);
 

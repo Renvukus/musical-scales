@@ -13,6 +13,7 @@ import { PRESETS } from './presets';
 export type CompositionAction =
   | { type: 'LOAD_COMPOSITION'; composition: Composition }
   | { type: 'SET_TEMPO'; tempo: number }
+  | { type: 'SET_TIME_SIGNATURE'; timeSignature: Composition['timeSignature'] }
   | { type: 'ADD_NOTE'; note: Note }
   | { type: 'ADD_NOTES'; notes: Note[] }
   | { type: 'DELETE_NOTES'; ids: string[] }
@@ -90,6 +91,12 @@ export function compositionReducer(
     case 'SET_TEMPO': {
       const tempo = Math.max(40, Math.min(240, Math.round(action.tempo)));
       return replacePresent(state, { ...comp, tempo });
+    }
+
+    case 'SET_TIME_SIGNATURE': {
+      const nextComp = { ...comp, timeSignature: action.timeSignature };
+      const totalBeats = computeTotalBeats(nextComp, comp.notes, comp.sections);
+      return pushHistory(state, { ...nextComp, totalBeats });
     }
 
     case 'ADD_NOTE': {
