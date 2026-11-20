@@ -90,6 +90,31 @@ select option {
   color: var(--text-primary);
 }
 
+.project-title-input {
+  width: 165px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  outline: none;
+  text-overflow: ellipsis;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.project-title-input:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-subtle);
+}
+
+.project-title-input:focus {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
 .divider-v {
   width: 1px;
   height: 22px;

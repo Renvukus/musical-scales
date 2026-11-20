@@ -341,6 +341,7 @@ export const App: React.FC = () => {
         onTogglePlay={handleTogglePlay}
         onStop={handleStop}
         onToggleLoop={() => setLoop((l) => !l)}
+        onTitleChange={(title) => dispatch({ type: 'SET_TITLE', title })}
         onTempoChange={(tempo) => dispatch({ type: 'SET_TEMPO', tempo })}
         onTimeSignatureChange={(timeSignature) =>
           dispatch({ type: 'SET_TIME_SIGNATURE', timeSignature })

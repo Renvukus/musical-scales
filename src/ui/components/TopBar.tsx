@@ -27,6 +27,7 @@ interface TopBarProps {
   onTogglePlay: () => void;
   onStop: () => void;
   onToggleLoop: () => void;
+  onTitleChange: (title: string) => void;
   onTempoChange: (tempo: number) => void;
   onTimeSignatureChange: (ts: TimeSignature) => void;
   onSnapChange: (snap: SnapGrid) => void;
@@ -41,6 +42,7 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
+  title,
   isPlaying,
   loop,
   tempo,
@@ -54,6 +56,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onTogglePlay,
   onStop,
   onToggleLoop,
+  onTitleChange,
   onTempoChange,
   onTimeSignatureChange,
   onSnapChange,
@@ -93,6 +96,22 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
           <h1 className="brand-title">Harmonia</h1>
         </div>
+
+        <input
+          id="input-project-title"
+          type="text"
+          className="project-title-input"
+          value={title}
+          placeholder="Untitled Project"
+          onChange={(e) => onTitleChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === 'Escape') {
+              e.currentTarget.blur();
+            }
+          }}
+          title="Project name (used when saving .harmonia.json or exporting .mid)"
+          aria-label="Project name"
+        />
 
         <div className="divider-v" />
 

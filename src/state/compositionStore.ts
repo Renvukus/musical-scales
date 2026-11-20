@@ -13,6 +13,7 @@ import { loadCompositionFromStorage } from './persistence';
 
 export type CompositionAction =
   | { type: 'LOAD_COMPOSITION'; composition: Composition }
+  | { type: 'SET_TITLE'; title: string }
   | { type: 'SET_TEMPO'; tempo: number }
   | { type: 'SET_TIME_SIGNATURE'; timeSignature: Composition['timeSignature'] }
   | { type: 'ADD_NOTE'; note: Note }
@@ -89,6 +90,9 @@ export function compositionReducer(
         ...action.composition,
         sections: normalizeSections(action.composition.sections),
       });
+
+    case 'SET_TITLE':
+      return replacePresent(state, { ...comp, title: action.title });
 
     case 'SET_TEMPO': {
       const tempo = Math.max(40, Math.min(240, Math.round(action.tempo)));
