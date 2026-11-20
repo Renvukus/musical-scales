@@ -4,7 +4,11 @@ import type { SnapGrid } from '../domain/music';
 import type { ChordCandidate, ScaleCandidate } from '../domain/theory';
 import { exportCompositionToMidi, importMidiToComposition } from '../midi';
 import { compositionReducer, createInitialHistory } from '../state/compositionStore';
-import { saveCompositionToStorage } from '../state/persistence';
+import {
+  deserializeProject,
+  saveCompositionToStorage,
+  saveProjectAsFile,
+} from '../state/persistence';
 import { PRESETS } from '../state/presets';
 import { analyzeComposition } from '../theory';
 import { ChordExplorer } from './components/ChordExplorer';
@@ -195,13 +199,19 @@ export const App: React.FC = () => {
     });
   }, [isPlaying, composition.notes, composition.tempo, loop, getPlaybackEndBeat]);
 
-  // Global keyboard shortcuts (Space = Play/Pause, Ctrl+Z/Y = Undo/Redo, Del/X = Delete focused chord section)
+  // Global keyboard shortcuts (Ctrl+S = Save As project, Space = Play/Pause, Ctrl+Z/Y = Undo/Redo, Del/X = Delete focused chord section, C = Play chord)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void saveProjectAsFile(latestCompRef.current);
+        return;
+      }
+
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
-      const mod = e.ctrlKey || e.metaKey;
       if (e.code === 'Space') {
         e.preventDefault();
         handleTogglePlay();
@@ -255,9 +265,24 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('beforeunload', flushSave);
   }, []);
 
-  // MIDI Import / Export handlers
+  // Project (.harmonia.json) & MIDI (.mid) Import / Export handlers
   const handleImportMidiFile = async (file: File) => {
     try {
+      if (/\.json$/i.test(file.name)) {
+        const text = await file.text();
+        const loaded = deserializeProject(text);
+        if (!loaded) {
+          alert('Could not read that project file. Please verify it is a valid .harmonia.json file.');
+          return;
+        }
+        handleStop();
+        dispatch({ type: 'LOAD_COMPOSITION', composition: loaded });
+        setActiveSectionId(loaded.sections[0]?.id ?? 'sec-1');
+        setInspectedChord(undefined);
+        setInspectedScale(undefined);
+        return;
+      }
+
       const buf = await file.arrayBuffer();
       const loaded = importMidiToComposition(buf, file.name);
       handleStop();
@@ -266,8 +291,8 @@ export const App: React.FC = () => {
       setInspectedChord(undefined);
       setInspectedScale(undefined);
     } catch (err) {
-      console.error('MIDI import failed:', err);
-      alert('Could not read that MIDI file. Please verify it is a valid .mid file.');
+      console.error('File import failed:', err);
+      alert('Could not read that file. Please verify it is a valid .mid or .harmonia.json file.');
     }
   };
 
@@ -296,7 +321,7 @@ export const App: React.FC = () => {
         e.preventDefault();
         setIsDraggingMidi(false);
         const file = e.dataTransfer.files?.[0];
-        if (file && /\.midi?$/i.test(file.name)) {
+        if (file && /\.(midi?|json)$/i.test(file.name)) {
           void handleImportMidiFile(file);
         }
       }}
@@ -556,7 +581,9 @@ export const App: React.FC = () => {
 
       {isDraggingMidi && (
         <div className="drop-overlay">
-          <div className="drop-overlay-box">Drop a .mid file to load it into Harmonia</div>
+          <div className="drop-overlay-box">
+            Drop a .mid or .harmonia.json file to load it into Harmonia
+          </div>
         </div>
       )}
     </div>

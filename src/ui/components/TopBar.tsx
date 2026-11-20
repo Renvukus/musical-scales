@@ -259,7 +259,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".mid,.midi"
+          accept=".mid,.midi,.json,.harmonia.json"
           style={{ display: 'none' }}
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -271,9 +271,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           id="btn-import-midi"
           className="btn"
           onClick={() => fileInputRef.current?.click()}
-          title="Import a .mid file (or drag & drop anywhere)"
+          title="Import a .mid or .harmonia.json project file (or drag & drop anywhere)"
         >
-          Import .mid
+          Import
         </button>
         <button
           id="btn-export-midi"
