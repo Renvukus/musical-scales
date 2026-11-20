@@ -22,4 +22,5 @@ export interface AudioEngine {
   start(options: PlaybackOptions): void;
   stop(): void;
   isPlaying(): boolean;
+  subscribeActivePitches(listener: (pitches: ReadonlySet<number>) => void): () => void;
 }

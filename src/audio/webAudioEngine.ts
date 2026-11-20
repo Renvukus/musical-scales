@@ -21,6 +21,67 @@ export class WebAudioEngine implements AudioEngine {
   private startBeatOffset = 0;
   private currentOptions: PlaybackOptions | null = null;
 
+  private activeVoiceCounts = new Map<number, number>();
+  private voiceTimers = new Set<number>();
+  private pitchListeners = new Set<(pitches: ReadonlySet<number>) => void>();
+
+  private emitActivePitches(): void {
+    const active = new Set<number>();
+    for (const [pitch, count] of this.activeVoiceCounts) {
+      if (count > 0) active.add(pitch);
+    }
+    for (const listener of this.pitchListeners) {
+      listener(active);
+    }
+  }
+
+  private trackVoiceWindow(pitch: number, when: number, durationSec: number): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const startDelayMs = Math.max(0, Math.round((when - now) * 1000));
+    const endDelayMs = Math.max(startDelayMs + 40, Math.round((when + durationSec - now) * 1000));
+
+    const startNote = () => {
+      this.activeVoiceCounts.set(pitch, (this.activeVoiceCounts.get(pitch) ?? 0) + 1);
+      this.emitActivePitches();
+    };
+
+    const endNote = () => {
+      const next = (this.activeVoiceCounts.get(pitch) ?? 1) - 1;
+      if (next <= 0) this.activeVoiceCounts.delete(pitch);
+      else this.activeVoiceCounts.set(pitch, next);
+      this.emitActivePitches();
+    };
+
+    if (startDelayMs <= 8) {
+      startNote();
+    } else {
+      const tStart = window.setTimeout(() => {
+        this.voiceTimers.delete(tStart);
+        startNote();
+      }, startDelayMs);
+      this.voiceTimers.add(tStart);
+    }
+
+    const tEnd = window.setTimeout(() => {
+      this.voiceTimers.delete(tEnd);
+      endNote();
+    }, endDelayMs);
+    this.voiceTimers.add(tEnd);
+  }
+
+  subscribeActivePitches(listener: (pitches: ReadonlySet<number>) => void): () => void {
+    this.pitchListeners.add(listener);
+    const active = new Set<number>();
+    for (const [pitch, count] of this.activeVoiceCounts) {
+      if (count > 0) active.add(pitch);
+    }
+    listener(active);
+    return () => {
+      this.pitchListeners.delete(listener);
+    };
+  }
+
   private ensureContext(): AudioContext {
     if (!this.ctx) {
       const AudioCtx =
@@ -70,6 +131,7 @@ export class WebAudioEngine implements AudioEngine {
 
     const freq = midiToFreq(pitch);
     const dur = Math.max(0.06, durationSec);
+    this.trackVoiceWindow(pitch, when, dur);
     const peakGain = Math.max(0.04, Math.min(0.42, velocity * 0.32));
 
     if (this.patch === 'triangle') {
@@ -245,6 +307,14 @@ export class WebAudioEngine implements AudioEngine {
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
+    }
+    for (const id of this.voiceTimers) {
+      clearTimeout(id);
+    }
+    this.voiceTimers.clear();
+    if (this.activeVoiceCounts.size > 0) {
+      this.activeVoiceCounts.clear();
+      this.emitActivePitches();
     }
   }
 

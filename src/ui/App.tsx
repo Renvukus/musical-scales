@@ -256,6 +256,7 @@ export const App: React.FC = () => {
             activeSectionId={activeSection?.id ?? ''}
             snap={snap}
             showGuides={showGuides}
+            isPlaying={isPlaying}
             playheadBeat={playheadBeat}
             pixelsPerBeat={pixelsPerBeat}
             scrollX={scrollX}

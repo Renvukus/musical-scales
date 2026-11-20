@@ -15,6 +15,7 @@ interface PianoRollProps {
   activeSectionId: string;
   snap: SnapGrid;
   showGuides: boolean;
+  isPlaying: boolean;
   playheadBeat: number;
   pixelsPerBeat: number;
   scrollX: number;
@@ -92,6 +93,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   activeSectionId,
   snap,
   showGuides,
+  isPlaying,
   playheadBeat,
   pixelsPerBeat,
   scrollX,
@@ -112,8 +114,16 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   const [clipboard, setClipboard] = useState<ClipboardNote[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 500 });
   const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1);
+  const [activePitches, setActivePitches] = useState<ReadonlySet<number>>(() => new Set());
   const dragRef = useRef<DragMode>({ type: 'none' });
   const [, forceRender] = useState(0);
+
+  // Subscribe to currently sounding pitches (both manual audition & playback)
+  useEffect(() => {
+    return audioEngine.subscribeActivePitches((pitches) => {
+      setActivePitches(pitches);
+    });
+  }, []);
 
   // Keep latest props accessible inside window keyboard/drag/wheel handlers
   const latestRef = useRef({
@@ -703,6 +713,11 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
         ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, rowHeight);
       }
 
+      if (activePitches.has(pitch)) {
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.13)';
+        ctx.fillRect(KEY_WIDTH, y, width - KEY_WIDTH, rowHeight);
+      }
+
       // Crisp 1px horizontal divider
       const lineY = Math.floor(y + rowHeight) + 0.5;
       ctx.strokeStyle = pc === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.035)';
@@ -815,25 +830,33 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const inChord = chord ? chord.pitchClasses.includes(pc) : true;
       const palette = FN_COLORS[chord?.harmonicFunction ?? 'tonic'];
       const isSelected = selectedIds.has(note.id);
+      const isNoteSounding =
+        isPlaying && playheadBeat >= note.start && playheadBeat < note.start + note.duration;
 
       const drawX = Math.max(KEY_WIDTH, nx);
       const drawW = Math.max(4, nx + nw - drawX - 1);
 
-      ctx.fillStyle = ownerSec ? (inChord ? palette.fill : '#64748b') : '#94a3b8';
-      ctx.globalAlpha = isSelected ? 1 : 0.88;
+      ctx.fillStyle = isNoteSounding
+        ? '#fde047'
+        : ownerSec
+          ? inChord
+            ? palette.fill
+            : '#64748b'
+          : '#94a3b8';
+      ctx.globalAlpha = isNoteSounding || isSelected ? 1 : 0.88;
       ctx.beginPath();
       ctx.roundRect(drawX, ny + 2, drawW, rowHeight - 4, 4);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      if (ownerSec && !inChord && showGuides) {
+      if (ownerSec && !inChord && showGuides && !isNoteSounding) {
         ctx.fillStyle = '#e29578';
         ctx.fillRect(drawX, ny + 2, 4, rowHeight - 4);
       }
 
-      if (isSelected) {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
+      if (isSelected || isNoteSounding) {
+        ctx.strokeStyle = isNoteSounding ? '#fef9c3' : '#ffffff';
+        ctx.lineWidth = isNoteSounding ? 1.8 : 1.5;
         ctx.beginPath();
         ctx.roundRect(drawX + 0.5, ny + 2.5, drawW - 1, rowHeight - 5, 4);
         ctx.stroke();
@@ -841,7 +864,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       }
 
       if (drawW >= 28) {
-        ctx.fillStyle = !ownerSec || inChord ? '#091114' : '#f1f5f9';
+        ctx.fillStyle = isNoteSounding || !ownerSec || inChord ? '#091114' : '#f1f5f9';
         ctx.font = '600 10px "JetBrains Mono", monospace';
         ctx.fillText(midiToNoteName(note.pitch), drawX + 6, ny + rowHeight - 6);
       }
@@ -931,19 +954,24 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
       const black = isBlackKey(pitch);
       const pc = toPitchClass(pitch);
       const inScale = showGuides && activeScaleSet.has(pc);
+      const isKeyPlaying = activePitches.has(pitch);
 
-      ctx.fillStyle = black ? '#191d28' : '#262b38';
+      ctx.fillStyle = isKeyPlaying
+        ? '#fbbf24'
+        : black
+          ? '#191d28'
+          : '#262b38';
       ctx.fillRect(0, y, KEY_WIDTH - 1, rowHeight - 1);
 
-      if (inScale) {
+      if (inScale && !isKeyPlaying) {
         ctx.fillStyle = 'rgba(52, 211, 153, 0.35)';
         ctx.fillRect(KEY_WIDTH - 5, y + 2, 4, rowHeight - 4);
       }
 
-      if (pc === 0 || !black) {
-        ctx.fillStyle = pc === 0 ? '#eef1f6' : '#7b8396';
+      if (isKeyPlaying || pc === 0 || !black) {
+        ctx.fillStyle = isKeyPlaying ? '#091114' : pc === 0 ? '#eef1f6' : '#7b8396';
         ctx.font =
-          pc === 0
+          isKeyPlaying || pc === 0
             ? '600 10px "JetBrains Mono", monospace'
             : '400 9px "JetBrains Mono", monospace';
         ctx.fillText(midiToNoteName(pitch), 8, y + rowHeight - 6);
