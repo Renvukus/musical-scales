@@ -14,7 +14,6 @@ interface TheoryInspectorProps {
   scale?: ScaleCandidate;
   selectedInterval?: IntervalAnalysis | null;
   mode: 'chord' | 'scale';
-  onInsertInversion?: (chord: ChordCandidate, inversion: number) => void;
 }
 
 function symbolToPreviewPitches(symbol: string): number[] {
@@ -44,7 +43,6 @@ export const TheoryInspector: React.FC<TheoryInspectorProps> = ({
   scale,
   selectedInterval,
   mode,
-  onInsertInversion,
 }) => {
   const intervalBanner = selectedInterval ? (
     <div className="interval-banner">
@@ -170,29 +168,15 @@ export const TheoryInspector: React.FC<TheoryInspectorProps> = ({
               3,
             );
             return (
-              <div key={label} className="inversion-group">
-                <button
-                  className="btn btn-sm"
-                  style={{ height: '22px', padding: '0 7px' }}
-                  onClick={() => audioEngine.playChord(pitches, 0.9, 0.75)}
-                  title={`Audition ${chord.symbol} (${label})`}
-                >
-                  ▶ {label}
-                </button>
-                {onInsertInversion && (
-                  <button
-                    className="btn btn-sm"
-                    style={{ height: '22px', padding: '0 5px' }}
-                    onClick={() => {
-                      audioEngine.playChord(pitches, 0.85, 0.74);
-                      onInsertInversion(chord, invIdx);
-                    }}
-                    title={`Insert ${chord.symbol} (${label}) into active section`}
-                  >
-                    +
-                  </button>
-                )}
-              </div>
+              <button
+                key={label}
+                className="btn btn-sm"
+                style={{ height: '22px', padding: '0 7px' }}
+                onClick={() => audioEngine.playChord(pitches, 0.9, 0.75)}
+                title={`Audition ${chord.symbol} (${label})`}
+              >
+                ▶ {label}
+              </button>
             );
           })}
         </div>

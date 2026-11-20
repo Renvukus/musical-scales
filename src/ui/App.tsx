@@ -619,18 +619,6 @@ export const App: React.FC = () => {
             chord={displayedChord}
             scale={displayedScale}
             selectedInterval={selectedInterval}
-            onInsertInversion={
-              activeSection
-                ? (chord, inversion) =>
-                    dispatch({
-                      type: 'INSERT_CHORD_IN_SECTION',
-                      sectionId: activeSection.id,
-                      pitchClasses: chord.pitchClasses,
-                      intervals: chord.definition.intervals,
-                      inversion,
-                    })
-                : undefined
-            }
           />
         </aside>
       </main>
