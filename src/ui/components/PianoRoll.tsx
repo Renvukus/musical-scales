@@ -81,8 +81,7 @@ type DragMode =
     }
   | {
       type: 'resize';
-      noteId: string;
-      initialDuration: number;
+      initialDurations: Map<string, number>;
       originBeat: number;
     }
   | {
@@ -571,11 +570,21 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     if (hit) {
       audioEngine.playNote(hit.note.pitch, 0.3, hit.note.velocity);
       if (hit.isRightEdge) {
-        setSelectedIds(new Set([hit.note.id]));
+        const resizeSelection = selectedIds.has(hit.note.id)
+          ? selectedIds
+          : new Set([hit.note.id]);
+        if (!selectedIds.has(hit.note.id)) {
+          setSelectedIds(resizeSelection);
+        }
+        const initialDurations = new Map<string, number>();
+        for (const n of composition.notes) {
+          if (resizeSelection.has(n.id)) {
+            initialDurations.set(n.id, n.duration);
+          }
+        }
         dragRef.current = {
           type: 'resize',
-          noteId: hit.note.id,
-          initialDuration: hit.note.duration,
+          initialDurations,
           originBeat: clickedBeat,
         };
         return;
@@ -681,8 +690,14 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
     if (drag.type === 'resize') {
       canvas.style.cursor = 'ew-resize';
       const delta = currBeat - drag.originBeat;
-      const nextDuration = Math.max(snap, snapBeat(drag.initialDuration + delta));
-      onPatchNotes([{ id: drag.noteId, duration: nextDuration }], false);
+      const patches: Array<{ id: string; duration: number }> = [];
+      for (const [id, initDur] of drag.initialDurations.entries()) {
+        patches.push({
+          id,
+          duration: Math.max(snap, snapBeat(initDur + delta)),
+        });
+      }
+      onPatchNotes(patches, false);
       return;
     }
 

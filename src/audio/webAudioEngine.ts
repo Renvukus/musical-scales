@@ -22,6 +22,7 @@ export class WebAudioEngine implements AudioEngine {
   private currentOptions: PlaybackOptions | null = null;
 
   private activeVoiceCounts = new Map<number, number>();
+  private activeNodes = new Set<{ oscs: OscillatorNode[]; gain: GainNode }>();
   private voiceTimers = new Set<number>();
   private pitchListeners = new Set<(pitches: ReadonlySet<number>) => void>();
 
@@ -158,6 +159,9 @@ export class WebAudioEngine implements AudioEngine {
 
       osc.connect(gain);
       gain.connect(this.masterGain);
+      const handle = { oscs: [osc], gain };
+      this.activeNodes.add(handle);
+      osc.onended = () => this.activeNodes.delete(handle);
       osc.start(when);
       osc.stop(tReleaseEnd + 0.03);
       return;
@@ -208,6 +212,10 @@ export class WebAudioEngine implements AudioEngine {
     overGain.connect(filter);
     filter.connect(amp);
     amp.connect(this.masterGain);
+
+    const handle = { oscs: [fund, over], gain: amp };
+    this.activeNodes.add(handle);
+    fund.onended = () => this.activeNodes.delete(handle);
 
     fund.start(when);
     over.start(when);
@@ -307,6 +315,22 @@ export class WebAudioEngine implements AudioEngine {
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
+    }
+    if (this.ctx && this.activeNodes.size > 0) {
+      const now = this.ctx.currentTime;
+      for (const handle of this.activeNodes) {
+        try {
+          handle.gain.gain.cancelScheduledValues(now);
+          handle.gain.gain.setValueAtTime(handle.gain.gain.value, now);
+          handle.gain.gain.linearRampToValueAtTime(0, now + 0.012);
+          for (const osc of handle.oscs) {
+            osc.stop(now + 0.02);
+          }
+        } catch {
+          // Oscillator may have already stopped
+        }
+      }
+      this.activeNodes.clear();
     }
     for (const id of this.voiceTimers) {
       clearTimeout(id);
