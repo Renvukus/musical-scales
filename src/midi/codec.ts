@@ -65,8 +65,8 @@ export function importMidiToComposition(
     });
   });
 
-  // Round total beats up to whole bars (cap to a sensible workspace size if huge)
-  const bars = Math.max(4, Math.min(32, Math.ceil(maxEndBeat / numerator)));
+  // Round total beats up to whole bars across the entire piece
+  const bars = Math.max(4, Math.ceil(maxEndBeat / numerator));
   const totalBeats = bars * numerator;
 
   // Create default 1-bar chord sections (last section extends to end of time)

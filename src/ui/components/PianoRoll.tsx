@@ -310,28 +310,66 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
           e.preventDefault();
           const chosen = comp.notes.filter((n) => sel.has(n.id));
           const minStart = Math.min(...chosen.map((n) => n.start));
-          setClipboard(
-            chosen.map((n) => ({
-              pitch: n.pitch,
-              startOffset: n.start - minStart,
-              duration: n.duration,
-              velocity: n.velocity,
-            })),
-          );
+          const payloadNotes: ClipboardNote[] = chosen.map((n) => ({
+            pitch: n.pitch,
+            startOffset: n.start - minStart,
+            duration: n.duration,
+            velocity: n.velocity,
+          }));
+          setClipboard(payloadNotes);
+          if (navigator.clipboard?.writeText) {
+            void navigator.clipboard
+              .writeText(JSON.stringify({ harmoniaClipboard: 1, notes: payloadNotes }))
+              .catch(() => {
+                // Ignore permission errors; in-memory clipboard still works
+              });
+          }
         }
       } else if (mod && e.key.toLowerCase() === 'v') {
-        if (clip.length > 0) {
-          e.preventDefault();
-          const pasteAt = Math.round(ph / latestRef.current.snap) * latestRef.current.snap;
-          const newNotes: Note[] = clip.map((c, idx) => ({
+        e.preventDefault();
+        const pasteNotes = (source: ClipboardNote[]) => {
+          if (source.length === 0) return;
+          const pasteAt =
+            Math.round(ph / latestRef.current.snap) * latestRef.current.snap;
+          const newNotes: Note[] = source.map((c, idx) => ({
             id: `paste-${Date.now().toString(36)}-${idx}`,
-            pitch: c.pitch,
-            start: Math.max(0, pasteAt + c.startOffset),
-            duration: c.duration,
-            velocity: c.velocity,
+            pitch: Math.max(0, Math.min(127, Math.round(c.pitch))),
+            start: Math.max(0, roundClean(pasteAt + c.startOffset)),
+            duration: Math.max(0.0625, c.duration),
+            velocity: Math.max(0.05, Math.min(1, c.velocity ?? 0.78)),
           }));
           onAddNotes(newNotes);
           setSelectedIds(new Set(newNotes.map((n) => n.id)));
+        };
+
+        if (navigator.clipboard?.readText) {
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              try {
+                const parsed = JSON.parse(text) as {
+                  harmoniaClipboard?: number;
+                  notes?: ClipboardNote[];
+                };
+                if (
+                  parsed?.harmoniaClipboard === 1 &&
+                  Array.isArray(parsed.notes) &&
+                  parsed.notes.length > 0
+                ) {
+                  setClipboard(parsed.notes);
+                  pasteNotes(parsed.notes);
+                  return;
+                }
+              } catch {
+                // Clipboard does not contain Harmonia JSON; fall back
+              }
+              pasteNotes(clip);
+            })
+            .catch(() => {
+              pasteNotes(clip);
+            });
+        } else {
+          pasteNotes(clip);
         }
       } else if (mod && e.key.toLowerCase() === 'd') {
         if (sel.size > 0) {
