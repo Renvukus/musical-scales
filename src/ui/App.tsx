@@ -387,7 +387,7 @@ export const App: React.FC = () => {
               setActiveSectionId(id);
               setSectionFocused(true);
               setInspectedChord(undefined);
-              setSidebarTab('chords');
+              setSidebarTab((tab) => (tab === 'map' ? 'map' : 'chords'));
             }}
             onSplitSection={(beat, s) => dispatch({ type: 'SPLIT_SECTION', beat, snap: s })}
             onMoveBoundary={(leftId, rightId, beat, s, commit) =>
@@ -601,6 +601,7 @@ export const App: React.FC = () => {
                 setActiveSectionId(id);
                 setInspectedChord(undefined);
               }}
+              onInspectChord={(chord) => setInspectedChord(chord)}
               onPinChordInActiveSection={(chordId) => {
                 if (!activeSection) return;
                 dispatch({

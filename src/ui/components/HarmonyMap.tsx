@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { audioEngine } from '../../audio';
 import type { Composition } from '../../domain/music';
 import type {
@@ -18,6 +18,7 @@ interface HarmonyMapProps {
   analysis: CompositionAnalysis;
   activeSectionId: string;
   onSelectSection: (sectionId: string) => void;
+  onInspectChord: (chord: ChordCandidate) => void;
   onPinChordInActiveSection: (chordId: string) => void;
   onHoverChord: (chord?: ChordCandidate) => void;
 }
@@ -66,6 +67,13 @@ const FN_STROKE: Record<HarmonicFunction, string> = {
   chromatic: '#38bdf8',
 };
 
+const FN_LABEL: Record<HarmonicFunction, string> = {
+  tonic: 'Tonic (home / stable)',
+  predominant: 'Predominant (movement / color)',
+  dominant: 'Dominant (tension / pull home)',
+  chromatic: 'Borrowed / out-of-key color',
+};
+
 function wedgePath(
   cx: number,
   cy: number,
@@ -97,14 +105,60 @@ function polarPos(cx: number, cy: number, r: number, deg: number) {
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
+/**
+ * Signed distance in fifths from `fromIdx` to `toIdx` on the 12-position circle (-6..+6).
+ * Positive = clockwise (dominant / brighter direction), negative = counter-clockwise (subdominant / warmer).
+ */
+function circleStepDistance(fromIdx: number, toIdx: number): number {
+  let diff = (toIdx - fromIdx + 12) % 12;
+  if (diff > 6) diff -= 12;
+  return diff;
+}
+
+function describeCircleRelation(
+  keyIdx: number,
+  wedgeIdx: number,
+  isMinorRing: boolean,
+  isDiatonic: boolean,
+): string {
+  const steps = circleStepDistance(keyIdx, wedgeIdx);
+  if (steps === 0) {
+    return isMinorRing
+      ? 'Relative minor of the home key — shares the exact same notes.'
+      : 'Home key center — strongest sense of rest and resolution.';
+  }
+  const absSteps = Math.abs(steps);
+  const dir =
+    steps > 0
+      ? 'clockwise (brighter / dominant side)'
+      : 'counter-clockwise (warmer / subdominant side)';
+  if (absSteps === 1) {
+    return isDiatonic
+      ? `1 step ${dir} — immediate neighbor that shares 6 of 7 scale notes.`
+      : `1 step ${dir} — closely related borrowed color.`;
+  }
+  if (absSteps <= 2) {
+    return `${absSteps} steps ${dir} — smooth secondary or modal-mixture color.`;
+  }
+  return `${absSteps} steps ${dir} — distant key for dramatic contrast or modulation.`;
+}
+
 export const HarmonyMap: React.FC<HarmonyMapProps> = ({
   composition,
   analysis,
   activeSectionId,
   onSelectSection,
+  onInspectChord,
   onPinChordInActiveSection,
   onHoverChord,
 }) => {
+  const [previewedWedge, setPreviewedWedge] = useState<{
+    pc: PitchClass;
+    quality: 'maj' | 'min';
+    label: string;
+    idx: number;
+  } | null>(null);
+
   const activeScale = analysis.activeScale;
   const activeSection =
     composition.sections.find((s) => s.id === activeSectionId) ??
@@ -114,13 +168,38 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
     : undefined;
   const activeChord = resolveSectionChord(activeSection, activeSecAnalysis);
 
+  // Locate the active scale's home position on the Circle of Fifths
+  const keyCircleIdx = (() => {
+    if (!activeScale) return 0;
+    const isMinorScale = activeScale.definition.intervals.includes(3);
+    const ring = isMinorScale ? CIRCLE_MINOR : CIRCLE_MAJOR;
+    const found = ring.findIndex((item) => item.pc === activeScale.rootPc);
+    return found >= 0 ? found : 0;
+  })();
+
   const findCandidate = (pc: PitchClass, quality: 'maj' | 'min') =>
     activeSecAnalysis?.candidates.find((c) => c.id === `${pc}:${quality}`);
 
-  const handleWedgeClick = (pc: PitchClass, quality: 'maj' | 'min') => {
+  const handleWedgePreview = (
+    pc: PitchClass,
+    quality: 'maj' | 'min',
+    label: string,
+    idx: number,
+  ) => {
     const intervals = quality === 'maj' ? [0, 4, 7] : [0, 3, 7];
     audioEngine.playChord(buildChordVoicing(pc, intervals, 0, 3), 0.85, 0.74);
+    setPreviewedWedge({ pc, quality, label, idx });
+    const cand = findCandidate(pc, quality);
+    if (cand) {
+      onInspectChord(cand);
+    }
+  };
+
+  const handleWedgeAssign = (pc: PitchClass, quality: 'maj' | 'min') => {
+    const intervals = quality === 'maj' ? [0, 4, 7] : [0, 3, 7];
+    audioEngine.playChord(buildChordVoicing(pc, intervals, 0, 3), 0.9, 0.78);
     onPinChordInActiveSection(`${pc}:${quality}`);
+    setPreviewedWedge(null);
   };
 
   // Build progression + voice-leading chain across all sections
@@ -142,10 +221,28 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
   const cx = 135;
   const cy = 135;
 
+  const previewCand = previewedWedge
+    ? findCandidate(previewedWedge.pc, previewedWedge.quality)
+    : undefined;
+
   return (
     <div className="explorer-list" onMouseLeave={() => onHoverChord(undefined)}>
-      <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '2px 2px 4px' }}>
-        Circle of Fifths — click any key to audition &amp; apply to the active section
+      {/* Contextual Guide */}
+      <div className="cof-guide-card">
+        <div className="cof-guide-title">Circle of Fifths</div>
+        <p className="cof-guide-copy">
+          Adjacent chords share the most notes and flow smoothly together.
+          <strong> Outer ring</strong> = Major, <strong>inner ring</strong> = relative Minor.
+          Highlighted wedges belong to your current key.
+        </p>
+        <div className="cof-guide-hint">
+          <span>
+            <span className="kbd">Click</span> Preview &amp; inspect
+          </span>
+          <span>
+            <span className="kbd">Double-click</span> Assign to section
+          </span>
+        </div>
       </div>
 
       {/* Interactive SVG Circle of Fifths */}
@@ -156,7 +253,11 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
             const endDeg = idx * 30 + 15;
             const cand = findCandidate(item.pc, 'maj');
             const isActiveChord =
-              activeChord?.rootPc === item.pc && activeChord.quality !== 'min' && activeChord.quality !== 'min7';
+              activeChord?.rootPc === item.pc &&
+              activeChord.quality !== 'min' &&
+              activeChord.quality !== 'min7';
+            const isPreviewed =
+              previewedWedge?.pc === item.pc && previewedWedge.quality === 'maj';
             const isDiatonic = cand?.isDiatonic ?? false;
             const fn = cand?.harmonicFunction ?? 'chromatic';
 
@@ -167,23 +268,30 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
                 : '#1c202b';
             const stroke = isActiveChord
               ? '#ffffff'
-              : isDiatonic
-                ? FN_STROKE[fn]
-                : 'rgba(255,255,255,0.08)';
+              : isPreviewed
+                ? '#e2e8f0'
+                : isDiatonic
+                  ? FN_STROKE[fn]
+                  : 'rgba(255,255,255,0.08)';
             const labelPos = polarPos(cx, cy, 108, idx * 30);
 
             return (
               <g
                 key={item.label}
                 style={{ cursor: 'pointer' }}
-                onClick={() => handleWedgeClick(item.pc, 'maj')}
+                onClick={() => handleWedgePreview(item.pc, 'maj', item.label, idx)}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  handleWedgeAssign(item.pc, 'maj');
+                }}
                 onMouseEnter={() => cand && onHoverChord(cand)}
               >
                 <path
                   d={wedgePath(cx, cy, 86, 128, startDeg, endDeg)}
                   fill={fill}
                   stroke={stroke}
-                  strokeWidth={isActiveChord ? 1.8 : 1}
+                  strokeWidth={isActiveChord ? 2 : isPreviewed ? 1.8 : 1}
+                  strokeDasharray={isPreviewed && !isActiveChord ? '4 2.5' : undefined}
                 />
                 <text
                   x={labelPos.x}
@@ -194,6 +302,7 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
                   fontSize="11.5"
                   fontWeight={isActiveChord || isDiatonic ? '700' : '500'}
                   fontFamily="var(--font-mono)"
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >
                   {item.label}
                 </text>
@@ -206,7 +315,10 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
             const endDeg = idx * 30 + 15;
             const cand = findCandidate(item.pc, 'min');
             const isActiveChord =
-              activeChord?.rootPc === item.pc && (activeChord.quality === 'min' || activeChord.quality === 'min7');
+              activeChord?.rootPc === item.pc &&
+              (activeChord.quality === 'min' || activeChord.quality === 'min7');
+            const isPreviewed =
+              previewedWedge?.pc === item.pc && previewedWedge.quality === 'min';
             const isDiatonic = cand?.isDiatonic ?? false;
             const fn = cand?.harmonicFunction ?? 'chromatic';
 
@@ -217,23 +329,30 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
                 : '#161923';
             const stroke = isActiveChord
               ? '#ffffff'
-              : isDiatonic
-                ? FN_STROKE[fn]
-                : 'rgba(255,255,255,0.07)';
+              : isPreviewed
+                ? '#e2e8f0'
+                : isDiatonic
+                  ? FN_STROKE[fn]
+                  : 'rgba(255,255,255,0.07)';
             const labelPos = polarPos(cx, cy, 67, idx * 30);
 
             return (
               <g
                 key={item.label}
                 style={{ cursor: 'pointer' }}
-                onClick={() => handleWedgeClick(item.pc, 'min')}
+                onClick={() => handleWedgePreview(item.pc, 'min', item.label, idx)}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  handleWedgeAssign(item.pc, 'min');
+                }}
                 onMouseEnter={() => cand && onHoverChord(cand)}
               >
                 <path
                   d={wedgePath(cx, cy, 48, 84, startDeg, endDeg)}
                   fill={fill}
                   stroke={stroke}
-                  strokeWidth={isActiveChord ? 1.8 : 1}
+                  strokeWidth={isActiveChord ? 2 : isPreviewed ? 1.8 : 1}
+                  strokeDasharray={isPreviewed && !isActiveChord ? '4 2.5' : undefined}
                 />
                 <text
                   x={labelPos.x}
@@ -244,6 +363,7 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
                   fontSize="9.5"
                   fontWeight={isActiveChord || isDiatonic ? '700' : '500'}
                   fontFamily="var(--font-mono)"
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >
                   {item.label}
                 </text>
@@ -275,19 +395,71 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
             {activeScale?.displayName ?? '—'}
           </text>
         </svg>
+
+        {/* Color Legend */}
+        <div className="cof-legend" aria-label="Harmonic function color legend">
+          <span className="cof-legend-item">
+            <span className="cof-swatch" style={{ background: FN_STROKE.tonic }} />
+            Tonic
+          </span>
+          <span className="cof-legend-item">
+            <span className="cof-swatch" style={{ background: FN_STROKE.predominant }} />
+            Predom
+          </span>
+          <span className="cof-legend-item">
+            <span className="cof-swatch" style={{ background: FN_STROKE.dominant }} />
+            Dominant
+          </span>
+          <span className="cof-legend-item">
+            <span className="cof-swatch" style={{ background: '#475569' }} />
+            Out of key
+          </span>
+        </div>
+
+        {/* Live Preview Context Banner */}
+        {previewedWedge && (
+          <div className="cof-preview-callout">
+            <div className="cof-preview-head">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span
+                  className={`candidate-roman soft-fn-${previewCand?.harmonicFunction ?? 'chromatic'}`}
+                >
+                  {previewCand?.romanNumeral ?? '—'}
+                </span>
+                <strong>{previewedWedge.label}</strong>
+                <span className="cof-preview-role">
+                  {FN_LABEL[previewCand?.harmonicFunction ?? 'chromatic']}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                title="Assign this chord to the active section"
+                onClick={() =>
+                  handleWedgeAssign(previewedWedge.pc, previewedWedge.quality)
+                }
+              >
+                Assign
+              </button>
+            </div>
+            <div className="cof-preview-desc">
+              {describeCircleRelation(
+                keyCircleIdx,
+                previewedWedge.idx,
+                previewedWedge.quality === 'min',
+                previewCand?.isDiatonic ?? false,
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Progression & Voice-Leading Flow */}
-      <div
-        style={{
-          fontSize: '10px',
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-muted)',
-          marginTop: '4px',
-        }}
-      >
-        Progression &amp; Voice Leading
+      <div className="cof-section-header">
+        <div className="cof-section-title">Progression &amp; Voice Leading</div>
+        <div className="cof-section-subtitle">
+          How smoothly each section flows into the next — higher % means more shared tones and smaller note steps.
+        </div>
       </div>
 
       <div className="progression-chain">
@@ -318,10 +490,7 @@ export const HarmonyMap: React.FC<HarmonyMapProps> = ({
                   <strong style={{ fontSize: '13px' }}>{chord?.symbol ?? '—'}</strong>
                 </div>
                 {vl && (
-                  <span
-                    className="pill pill-muted"
-                    title={vl.summary}
-                  >
+                  <span className="pill pill-muted" title={vl.summary}>
                     {vl.smoothness}% smooth · {vl.commonTones} shared
                   </span>
                 )}
