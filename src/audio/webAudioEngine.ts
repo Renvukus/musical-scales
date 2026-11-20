@@ -398,22 +398,65 @@ export class WebAudioEngine implements AudioEngine {
     this.currentOptions = options;
     this.startBeatOffset = options.startBeat;
     this.startAudioTime = ctx.currentTime + 0.03;
-    this.scheduledUntilBeat = options.startBeat - 0.001;
+    this.scheduledUntilBeat = options.startBeat - 1e-4;
 
     const scheduleLookahead = () => {
       if (!this.playing || !this.currentOptions || !this.ctx) return;
       const opt = this.currentOptions;
       const secPerBeat = 60 / opt.tempo;
       const elapsedSec = this.ctx.currentTime - this.startAudioTime;
-      const currentBeat = this.startBeatOffset + elapsedSec / secPerBeat;
+      const currentAbsBeat = this.startBeatOffset + elapsedSec / secPerBeat;
       const lookaheadBeats = 0.35 / secPerBeat; // 350ms lookahead
-      const windowEnd = currentBeat + lookaheadBeats;
+      const windowEndAbs = currentAbsBeat + lookaheadBeats;
+      const loopLen = Math.max(0.25, opt.loopEndBeat - opt.loopStartBeat);
 
-      for (const note of opt.notes) {
-        if (note.start > this.scheduledUntilBeat && note.start <= windowEnd) {
-          if (note.start < opt.loopEndBeat) {
+      if (opt.loop) {
+        // Schedule all notes falling in (scheduledUntilBeat, windowEndAbs] across loop wraps
+        const minK = Math.max(
+          0,
+          Math.floor((this.scheduledUntilBeat - opt.loopStartBeat) / loopLen) - 1,
+        );
+        const maxK = Math.max(
+          0,
+          Math.floor((windowEndAbs - opt.loopStartBeat) / loopLen) + 1,
+        );
+
+        for (let k = minK; k <= maxK; k++) {
+          const cycleOffset = k * loopLen;
+          for (const note of opt.notes) {
+            if (note.start < opt.loopStartBeat || note.start >= opt.loopEndBeat) {
+              continue;
+            }
+            const noteAbsBeat = note.start + cycleOffset;
+            if (
+              noteAbsBeat > this.scheduledUntilBeat &&
+              noteAbsBeat <= windowEndAbs
+            ) {
+              const when =
+                this.startAudioTime +
+                (noteAbsBeat - this.startBeatOffset) * secPerBeat;
+              if (when >= this.ctx.currentTime - 0.05) {
+                this.triggerVoice(
+                  note.pitch,
+                  Math.max(this.ctx.currentTime, when),
+                  note.duration * secPerBeat,
+                  note.velocity,
+                );
+              }
+            }
+          }
+        }
+        this.scheduledUntilBeat = Math.max(this.scheduledUntilBeat, windowEndAbs);
+      } else {
+        for (const note of opt.notes) {
+          if (
+            note.start > this.scheduledUntilBeat &&
+            note.start <= windowEndAbs &&
+            note.start < opt.loopEndBeat
+          ) {
             const when =
-              this.startAudioTime + (note.start - this.startBeatOffset) * secPerBeat;
+              this.startAudioTime +
+              (note.start - this.startBeatOffset) * secPerBeat;
             if (when >= this.ctx.currentTime - 0.05) {
               this.triggerVoice(
                 note.pitch,
@@ -424,15 +467,9 @@ export class WebAudioEngine implements AudioEngine {
             }
           }
         }
-      }
-      this.scheduledUntilBeat = Math.max(this.scheduledUntilBeat, windowEnd);
+        this.scheduledUntilBeat = Math.max(this.scheduledUntilBeat, windowEndAbs);
 
-      if (currentBeat >= opt.loopEndBeat) {
-        if (opt.loop) {
-          this.startBeatOffset = opt.loopStartBeat;
-          this.startAudioTime = this.ctx.currentTime;
-          this.scheduledUntilBeat = opt.loopStartBeat - 0.001;
-        } else {
+        if (currentAbsBeat >= opt.loopEndBeat) {
           const onStop = opt.onStop;
           this.stop();
           onStop();
@@ -444,16 +481,27 @@ export class WebAudioEngine implements AudioEngine {
       if (!this.playing || !this.currentOptions || !this.ctx) return;
       const opt = this.currentOptions;
       const secPerBeat = 60 / opt.tempo;
-      const currentBeat = Math.max(
-        opt.loopStartBeat,
-        this.startBeatOffset + (this.ctx.currentTime - this.startAudioTime) / secPerBeat,
-      );
-      opt.onPlayhead(Math.min(opt.loopEndBeat, currentBeat));
+      const currentAbsBeat =
+        this.startBeatOffset + (this.ctx.currentTime - this.startAudioTime) / secPerBeat;
+
+      if (opt.loop) {
+        const loopLen = Math.max(0.25, opt.loopEndBeat - opt.loopStartBeat);
+        const rel = currentAbsBeat - opt.loopStartBeat;
+        const wrapped =
+          rel >= 0
+            ? opt.loopStartBeat + (rel % loopLen)
+            : Math.max(opt.loopStartBeat, currentAbsBeat);
+        opt.onPlayhead(wrapped);
+      } else {
+        opt.onPlayhead(
+          Math.max(opt.loopStartBeat, Math.min(opt.loopEndBeat, currentAbsBeat)),
+        );
+      }
       this.rafId = requestAnimationFrame(tickVisual);
     };
 
     scheduleLookahead();
-    this.schedulerId = window.setInterval(scheduleLookahead, 40);
+    this.schedulerId = window.setInterval(scheduleLookahead, 35);
     this.rafId = requestAnimationFrame(tickVisual);
   }
 
@@ -473,9 +521,9 @@ export class WebAudioEngine implements AudioEngine {
       // Smoothly re-anchor playhead clock so changing tempo mid-playback doesn't jump
       const now = this.ctx.currentTime;
       const oldSecPerBeat = 60 / this.currentOptions.tempo;
-      const currentBeat =
+      const currentAbsBeat =
         this.startBeatOffset + (now - this.startAudioTime) / oldSecPerBeat;
-      this.startBeatOffset = currentBeat;
+      this.startBeatOffset = currentAbsBeat;
       this.startAudioTime = now;
       this.currentOptions.tempo = partial.tempo;
     }
