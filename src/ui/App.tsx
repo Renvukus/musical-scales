@@ -10,7 +10,7 @@ import {
   saveProjectAsFile,
 } from '../state/persistence';
 import { PRESETS } from '../state/presets';
-import { analyzeComposition } from '../theory';
+import { analyzeComposition, resolveSectionChord } from '../theory';
 import { ChordExplorer } from './components/ChordExplorer';
 import { PianoRoll } from './components/PianoRoll';
 import { ScaleExplorer } from './components/ScaleExplorer';
@@ -66,12 +66,7 @@ export const App: React.FC = () => {
     ) {
       return activeSectionAnalysis.candidates.find((c) => c.id === inspectedChord.id);
     }
-    if (activeSection.selectedChordId) {
-      return activeSectionAnalysis.candidates.find(
-        (c) => c.id === activeSection.selectedChordId,
-      );
-    }
-    return activeSectionAnalysis.topChord;
+    return resolveSectionChord(activeSection, activeSectionAnalysis);
   }, [activeSection, activeSectionAnalysis, hoveredChord, inspectedChord]);
 
   const displayedScale = hoveredScale ?? inspectedScale ?? analysis.activeScale;
@@ -90,10 +85,7 @@ export const App: React.FC = () => {
     lastPreviewSectionRef.current = currentSec.id;
 
     const secAnalysis = analysis.sections[currentSec.id];
-    const chosen =
-      (currentSec.selectedChordId
-        ? secAnalysis?.candidates.find((c) => c.id === currentSec.selectedChordId)
-        : undefined) ?? secAnalysis?.topChord;
+    const chosen = resolveSectionChord(currentSec, secAnalysis);
     if (!chosen) {
       audioEngine.stopPreviewChord();
       return;
@@ -544,6 +536,9 @@ export const App: React.FC = () => {
               sectionAnalysis={activeSectionAnalysis}
               onSelectChord={(sectionId, chordId) =>
                 dispatch({ type: 'SELECT_SECTION_CHORD', sectionId, chordId })
+              }
+              onSetConstraint={(sectionId, constraint) =>
+                dispatch({ type: 'SET_SECTION_CONSTRAINT', sectionId, constraint })
               }
               onInspectChord={(chord) => setInspectedChord(chord)}
               onHoverChord={setHoveredChord}

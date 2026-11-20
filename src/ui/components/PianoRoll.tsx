@@ -7,7 +7,7 @@ import type {
   CompositionAnalysis,
   HarmonicFunction,
 } from '../../domain/theory';
-import { isBlackKey, midiToNoteName, toPitchClass } from '../../theory';
+import { isBlackKey, midiToNoteName, resolveSectionChord, toPitchClass } from '../../theory';
 
 interface PianoRollProps {
   composition: Composition;
@@ -273,12 +273,7 @@ export const PianoRoll: React.FC<PianoRollProps> = ({
   const getSectionChord = (sectionId: string): ChordCandidate | undefined => {
     const section = composition.sections.find((s) => s.id === sectionId);
     const secAnalysis = analysis.sections[sectionId];
-    if (!secAnalysis) return undefined;
-    return (
-      (section?.selectedChordId
-        ? secAnalysis.candidates.find((c) => c.id === section.selectedChordId)
-        : undefined) ?? secAnalysis.topChord
-    );
+    return resolveSectionChord(section, secAnalysis);
   };
 
   // Keyboard shortcuts (LMMS-friendly: Delete / Backspace / X, Ctrl+C/V/D/A)

@@ -26,6 +26,19 @@ export type ChordQuality =
   | 'dim7'
   | 'add9';
 
+export type ChordQualityFamily =
+  | 'triad'
+  | 'major'
+  | 'minor'
+  | 'seventh'
+  | 'suspended'
+  | 'dim-aug';
+
+export interface ChordConstraint {
+  harmonicFunction?: HarmonicFunction;
+  qualityFamily?: ChordQualityFamily;
+}
+
 export interface ScaleDefinition {
   id: string;
   name: string;

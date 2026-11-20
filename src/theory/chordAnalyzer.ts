@@ -1,6 +1,8 @@
 import type { Note, Section, TimeSignature } from '../domain/music';
 import type {
   ChordCandidate,
+  ChordConstraint,
+  ChordQualityFamily,
   PitchClass,
   ScaleCandidate,
   SectionAnalysis,
@@ -13,6 +15,89 @@ import {
   evaluateTransition,
 } from './progressionAnalyzer';
 import { buildPitchProfile } from './weighting';
+
+function matchesQualityFamily(
+  quality: ChordCandidate['quality'],
+  family: ChordQualityFamily,
+): boolean {
+  switch (family) {
+    case 'triad':
+      return quality === 'maj' || quality === 'min' || quality === 'dim' || quality === 'aug';
+    case 'major':
+      return quality === 'maj' || quality === 'maj7' || quality === 'add9' || quality === '7';
+    case 'minor':
+      return quality === 'min' || quality === 'min7' || quality === 'm7b5';
+    case 'seventh':
+      return (
+        quality === 'maj7' ||
+        quality === 'min7' ||
+        quality === '7' ||
+        quality === 'm7b5' ||
+        quality === 'dim7'
+      );
+    case 'suspended':
+      return quality === 'sus2' || quality === 'sus4';
+    case 'dim-aug':
+      return quality === 'dim' || quality === 'dim7' || quality === 'm7b5' || quality === 'aug';
+    default:
+      return true;
+  }
+}
+
+export function matchesChordConstraint(
+  candidate: ChordCandidate,
+  constraint?: ChordConstraint,
+): boolean {
+  if (!constraint) return true;
+  if (
+    constraint.harmonicFunction &&
+    candidate.harmonicFunction !== constraint.harmonicFunction
+  ) {
+    return false;
+  }
+  if (
+    constraint.qualityFamily &&
+    !matchesQualityFamily(candidate.quality, constraint.qualityFamily)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function filterCandidatesByConstraint(
+  candidates: ChordCandidate[],
+  constraint?: ChordConstraint,
+): ChordCandidate[] {
+  if (!constraint || (!constraint.harmonicFunction && !constraint.qualityFamily)) {
+    return candidates;
+  }
+  const filtered = candidates.filter((c) => matchesChordConstraint(c, constraint));
+  return filtered.length > 0 ? filtered : candidates;
+}
+
+/**
+ * Resolves the active chord for a section, honoring:
+ * 1) an explicitly pinned chord (selectedChordId), else
+ * 2) the top auto-detected chord matching section.chordConstraint, else
+ * 3) the overall top auto-detected chord.
+ */
+export function resolveSectionChord(
+  section?: Section,
+  sectionAnalysis?: SectionAnalysis,
+): ChordCandidate | undefined {
+  if (!section || !sectionAnalysis) return undefined;
+  if (section.selectedChordId) {
+    const pinned = sectionAnalysis.candidates.find(
+      (c) => c.id === section.selectedChordId,
+    );
+    if (pinned) return pinned;
+  }
+  const matching = filterCandidatesByConstraint(
+    sectionAnalysis.candidates,
+    section.chordConstraint,
+  );
+  return matching[0] ?? sectionAnalysis.topChord;
+}
 
 function describeInversion(
   bassPc: PitchClass | undefined,

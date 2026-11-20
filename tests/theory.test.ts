@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Composition, Note } from '../src/domain/music';
 import { PRESETS } from '../src/state/presets';
-import { analyzeComposition, analyzeSection, rankScales } from '../src/theory';
+import { analyzeComposition, analyzeSection, rankScales, resolveSectionChord } from '../src/theory';
 
 function n(pitch: number, start: number, duration = 4, velocity = 0.8): Note {
   return { id: `t-${pitch}-${start}`, pitch, start, duration, velocity };
@@ -101,5 +101,40 @@ describe('Harmonic Analysis Engine', () => {
     expect(result.sections['s1'].topChord?.symbol).toBe('C');
     expect(result.sections['s1'].topChord?.outsideNoteCount).toBe(1);
     expect(result.sections['s1'].topChord?.outsidePitchNames).toContain('F#');
+  });
+
+  it('resolves automatic chords constrained by harmonic role (e.g. Dominant) or chord type', () => {
+    const comp: Composition = {
+      title: 'Constraint Test',
+      tempo: 140,
+      timeSignature: { numerator: 4, denominator: 4 },
+      totalBeats: 4,
+      sections: [
+        {
+          id: 's1',
+          start: 0,
+          end: Infinity,
+          chordConstraint: { harmonicFunction: 'dominant' },
+        },
+      ],
+      notes: [
+        n(48, 0, 4, 0.8), // C3
+        n(52, 0, 4, 0.7), // E3
+        n(55, 0, 4, 0.7), // G3
+      ],
+    };
+    const result = analyzeComposition(comp);
+    const resolved = resolveSectionChord(comp.sections[0], result.sections['s1']);
+    expect(resolved?.harmonicFunction).toBe('dominant');
+    expect(resolved?.symbol).toMatch(/^G|^B/);
+
+    // Also test combining Dominant + 7th
+    const seventhSec = {
+      ...comp.sections[0],
+      chordConstraint: { harmonicFunction: 'dominant' as const, qualityFamily: 'seventh' as const },
+    };
+    const resolved7 = resolveSectionChord(seventhSec, result.sections['s1']);
+    expect(resolved7?.harmonicFunction).toBe('dominant');
+    expect(resolved7?.quality).toMatch(/7|m7b5/);
   });
 });

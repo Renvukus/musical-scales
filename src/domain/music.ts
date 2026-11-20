@@ -1,3 +1,5 @@
+import type { ChordConstraint } from './theory';
+
 /**
  * Core musical composition domain models.
  * Intentionally framework-agnostic (zero React/DOM/WebAudio dependencies).
@@ -23,6 +25,8 @@ export interface Section {
   end: number;
   /** Optional user-pinned chord ID (e.g., "0:maj" for C major) to highlight & compare. */
   selectedChordId?: string;
+  /** Optional chord-type constraint (e.g., Dominant or Minor) while keeping chord selection automatic. */
+  chordConstraint?: ChordConstraint;
 }
 
 export interface TimeSignature {

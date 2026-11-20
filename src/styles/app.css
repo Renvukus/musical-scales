@@ -652,6 +652,59 @@ select option {
   color: var(--text-secondary);
 }
 
+/* Chord Type / Function Constraint Chips */
+.constraint-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 9px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-subtle);
+}
+
+.constraint-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.constraint-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  width: 34px;
+  flex-shrink: 0;
+}
+
+.constraint-chip {
+  height: 21px;
+  padding: 0 7px;
+  border-radius: 99px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.constraint-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.constraint-chip.is-active {
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 /* Contextual Theory Inspector (Fixed height so hovering/selecting never shifts layout) */
 .theory-inspector {
   flex-shrink: 0;

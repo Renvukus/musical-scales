@@ -1,6 +1,6 @@
 import type { Composition } from '../domain/music';
 import type { ChordCandidate, CompositionAnalysis } from '../domain/theory';
-import { analyzeSection } from './chordAnalyzer';
+import { analyzeSection, resolveSectionChord } from './chordAnalyzer';
 import { rankScales } from './scaleAnalyzer';
 
 export * from './pitch';
@@ -36,12 +36,7 @@ export function analyzeComposition(composition: Composition): CompositionAnalysi
       prevChord,
     );
     sections[section.id] = analysis;
-
-    const chosenForNext =
-      (section.selectedChordId
-        ? analysis.candidates.find((c) => c.id === section.selectedChordId)
-        : undefined) ?? analysis.topChord;
-    prevChord = chosenForNext;
+    prevChord = resolveSectionChord(section, analysis);
   }
 
   return {

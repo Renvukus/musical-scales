@@ -1,22 +1,67 @@
 import React from 'react';
 import { audioEngine } from '../../audio';
 import type { Section } from '../../domain/music';
-import type { ChordCandidate, SectionAnalysis } from '../../domain/theory';
+import type {
+  ChordCandidate,
+  ChordConstraint,
+  ChordQualityFamily,
+  HarmonicFunction,
+  SectionAnalysis,
+} from '../../domain/theory';
+import { filterCandidatesByConstraint } from '../../theory';
 import { getFitPillStyle } from '../fitColor';
 
 interface ChordExplorerProps {
   section?: Section;
   sectionAnalysis?: SectionAnalysis;
   onSelectChord: (sectionId: string, chordId?: string) => void;
+  onSetConstraint: (sectionId: string, constraint?: ChordConstraint) => void;
   onInspectChord: (chord: ChordCandidate) => void;
   onHoverChord: (chord?: ChordCandidate) => void;
   onInsertChord: (sectionId: string, chord: ChordCandidate) => void;
+}
+
+const FUNCTION_OPTIONS: Array<{
+  value?: HarmonicFunction;
+  label: string;
+  colorClass?: string;
+}> = [
+  { value: undefined, label: 'Any' },
+  { value: 'tonic', label: 'Tonic', colorClass: 'fn-tonic' },
+  { value: 'predominant', label: 'Predom', colorClass: 'fn-predominant' },
+  { value: 'dominant', label: 'Dominant', colorClass: 'fn-dominant' },
+  { value: 'chromatic', label: 'Borrowed', colorClass: 'fn-chromatic' },
+];
+
+const QUALITY_OPTIONS: Array<{ value?: ChordQualityFamily; label: string }> = [
+  { value: undefined, label: 'Any' },
+  { value: 'major', label: 'Major' },
+  { value: 'minor', label: 'Minor' },
+  { value: 'seventh', label: '7th' },
+  { value: 'triad', label: 'Triad' },
+  { value: 'suspended', label: 'Sus' },
+  { value: 'dim-aug', label: 'Dim/Aug' },
+];
+
+function formatConstraintTag(constraint?: ChordConstraint): string {
+  if (!constraint) return 'Auto';
+  const parts: string[] = [];
+  if (constraint.harmonicFunction) {
+    const fnOpt = FUNCTION_OPTIONS.find((o) => o.value === constraint.harmonicFunction);
+    if (fnOpt) parts.push(fnOpt.label);
+  }
+  if (constraint.qualityFamily) {
+    const qOpt = QUALITY_OPTIONS.find((o) => o.value === constraint.qualityFamily);
+    if (qOpt) parts.push(qOpt.label);
+  }
+  return parts.length > 0 ? `Auto · ${parts.join(' ')}` : 'Auto';
 }
 
 export const ChordExplorer: React.FC<ChordExplorerProps> = ({
   section,
   sectionAnalysis,
   onSelectChord,
+  onSetConstraint,
   onInspectChord,
   onHoverChord,
   onInsertChord,
@@ -31,8 +76,13 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
     );
   }
 
-  const topCandidates = sectionAnalysis.candidates.slice(0, 18);
-  const autoChord = sectionAnalysis.topChord;
+  const constraint = section.chordConstraint;
+  const filteredCandidates = filterCandidatesByConstraint(
+    sectionAnalysis.candidates,
+    constraint,
+  );
+  const topCandidates = filteredCandidates.slice(0, 18);
+  const autoChord = filteredCandidates[0] ?? sectionAnalysis.topChord;
   const isAutoSelected = !section.selectedChordId;
 
   const auditionChord = (e: React.MouseEvent, chord: ChordCandidate) => {
@@ -40,6 +90,26 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
     const baseMidi = 48 + chord.rootPc; // C3..B3 root
     const pitches = chord.definition.intervals.map((semi) => baseMidi + semi);
     audioEngine.playChord(pitches, 0.95, 0.78);
+  };
+
+  const applyConstraint = (next: ChordConstraint) => {
+    const cleaned: ChordConstraint | undefined =
+      next.harmonicFunction || next.qualityFamily ? next : undefined;
+    onSetConstraint(section.id, cleaned);
+    const nextFiltered = filterCandidatesByConstraint(
+      sectionAnalysis.candidates,
+      cleaned,
+    );
+    const nextAuto = nextFiltered[0];
+    if (nextAuto) {
+      onInspectChord(nextAuto);
+      const baseMidi = 48 + nextAuto.rootPc;
+      audioEngine.playChord(
+        nextAuto.definition.intervals.map((s) => baseMidi + s),
+        0.75,
+        0.72,
+      );
+    }
   };
 
   const rangeLabel = Number.isFinite(section.end)
@@ -53,7 +123,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '2px 2px 4px',
+          padding: '2px 2px 2px',
         }}
       >
         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
@@ -61,6 +131,60 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
           {sectionAnalysis.noteCount === 1 ? '' : 's'}
           {sectionAnalysis.isAmbiguous ? ' · Multiple strong fits' : ''}
         </span>
+      </div>
+
+      {/* Versatile Chord Role / Type Auto-Constraint Selector */}
+      <div className="constraint-panel">
+        <div className="constraint-row">
+          <span className="constraint-label">Role</span>
+          {FUNCTION_OPTIONS.map((opt) => {
+            const active = constraint?.harmonicFunction === opt.value;
+            return (
+              <button
+                key={opt.label}
+                className={`constraint-chip ${active ? 'is-active' : ''} ${opt.colorClass ?? ''}`}
+                onClick={() =>
+                  applyConstraint({
+                    ...constraint,
+                    harmonicFunction: opt.value,
+                  })
+                }
+                title={
+                  opt.value
+                    ? `Keep chord automatic, constrained to ${opt.label} chords`
+                    : 'Allow any harmonic role'
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="constraint-row">
+          <span className="constraint-label">Type</span>
+          {QUALITY_OPTIONS.map((opt) => {
+            const active = constraint?.qualityFamily === opt.value;
+            return (
+              <button
+                key={opt.label}
+                className={`constraint-chip ${active ? 'is-active' : ''}`}
+                onClick={() =>
+                  applyConstraint({
+                    ...constraint,
+                    qualityFamily: opt.value,
+                  })
+                }
+                title={
+                  opt.value
+                    ? `Keep chord automatic, constrained to ${opt.label} chords`
+                    : 'Allow any chord type'
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Prominent always-visible Auto chord card */}
@@ -82,13 +206,13 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
               0.72,
             );
           }}
-          title="Automatically pick the highest-scoring chord as notes change"
+          title="Automatically pick the highest-scoring chord matching your selected Role/Type filters"
         >
           <div className={`candidate-accent-bar bg-fn-${autoChord.harmonicFunction}`} />
           <div className="candidate-top">
             <div className="candidate-title-group">
               <span className="pill pill-clean" style={{ fontSize: '10px' }}>
-                Auto
+                {formatConstraintTag(constraint)}
               </span>
               <span className="candidate-symbol">
                 {autoChord.symbol}
@@ -149,7 +273,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
           padding: '2px 2px 0',
         }}
       >
-        Ranked Chords
+        {constraint ? 'Matching Chords' : 'Ranked Chords'}
       </div>
 
       {topCandidates.map((chord) => {

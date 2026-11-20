@@ -1,5 +1,5 @@
 import type { Composition, Note, Section } from '../domain/music';
-import type { PitchClass } from '../domain/theory';
+import type { ChordConstraint, PitchClass } from '../domain/theory';
 import {
   createHistory,
   pushHistory,
@@ -23,6 +23,7 @@ export type CompositionAction =
   | { type: 'PATCH_NOTES'; patches: Array<{ id: string; start?: number; duration?: number; pitch?: number }>; commit?: boolean }
   | { type: 'SELECT_SCALE'; scaleId?: string }
   | { type: 'SELECT_SECTION_CHORD'; sectionId: string; chordId?: string }
+  | { type: 'SET_SECTION_CONSTRAINT'; sectionId: string; constraint?: ChordConstraint }
   | { type: 'SPLIT_SECTION'; beat: number; snap?: number }
   | { type: 'MOVE_SECTION_BOUNDARY'; leftSectionId: string; rightSectionId: string; beat: number; snap?: number; commit?: boolean }
   | { type: 'DELETE_SECTION'; sectionId: string }
@@ -165,6 +166,15 @@ export function compositionReducer(
           : s,
       );
       return replacePresent(state, { ...comp, sections });
+    }
+
+    case 'SET_SECTION_CONSTRAINT': {
+      const sections = comp.sections.map((s) =>
+        s.id === action.sectionId
+          ? { ...s, chordConstraint: action.constraint, selectedChordId: undefined }
+          : s,
+      );
+      return pushHistory(state, { ...comp, sections });
     }
 
     case 'SPLIT_SECTION': {

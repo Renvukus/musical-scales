@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import type { Section, SnapGrid } from '../../domain/music';
 import type { CompositionAnalysis } from '../../domain/theory';
+import { resolveSectionChord } from '../../theory';
 import { getFitTextColor } from '../fitColor';
 
 interface SectionTimelineProps {
@@ -121,10 +122,7 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
             ? (section.end - section.start) * pixelsPerBeat
             : 0;
           const secAnalysis = analysis.sections[section.id];
-          const chosenChord =
-            (section.selectedChordId
-              ? secAnalysis?.candidates.find((c) => c.id === section.selectedChordId)
-              : undefined) ?? secAnalysis?.topChord;
+          const chosenChord = resolveSectionChord(section, secAnalysis);
 
           const fn = chosenChord?.harmonicFunction ?? 'tonic';
           const isActive = section.id === activeSectionId;
