@@ -52,11 +52,21 @@ export const VelocityLane: React.FC<VelocityLaneProps> = ({
   // Track active velocity drag
   const dragRef = useRef<{
     active: boolean;
-    mode: 'locked' | 'sweep';
+    mode: 'locked' | 'sweep' | 'multi';
     lockedIds: string[];
+    initialVelocities: Map<string, number>;
+    anchorVel: number;
     lastX: number;
     dirty: boolean;
-  }>({ active: false, mode: 'sweep', lockedIds: [], lastX: 0, dirty: false });
+  }>({
+    active: false,
+    mode: 'sweep',
+    lockedIds: [],
+    initialVelocities: new Map(),
+    anchorVel: 0.8,
+    lastX: 0,
+    dirty: false,
+  });
 
   const latestRef = useRef({
     composition,
@@ -155,7 +165,36 @@ export const VelocityLane: React.FC<VelocityLaneProps> = ({
     const vel = yToVel(y, h);
     const hits = findNotesNearX(x, 11);
 
-    if (hits.length > 0) {
+    if (selectedNotes.length > 1) {
+      // Multi-select: drag velocity for all selected notes together (preserving relative dynamics)
+      const initialVelocities = new Map<string, number>();
+      let sum = 0;
+      for (const n of selectedNotes) {
+        initialVelocities.set(n.id, n.velocity);
+        sum += n.velocity;
+      }
+      const hitSelected = hits.find((n) => selectedSet.has(n.id));
+      const anchorVel = hitSelected ? hitSelected.velocity : sum / selectedNotes.length;
+      const delta = vel - anchorVel;
+
+      dragRef.current = {
+        active: true,
+        mode: 'multi',
+        lockedIds: selectedNotes.map((n) => n.id),
+        initialVelocities,
+        anchorVel,
+        lastX: x,
+        dirty: true,
+      };
+      setDragVelPct(Math.round(vel * 100));
+      onPatchNotes(
+        selectedNotes.map((n) => ({
+          id: n.id,
+          velocity: Math.max(0.05, Math.min(1, n.velocity + delta)),
+        })),
+        false,
+      );
+    } else if (hits.length > 0) {
       // Check if cursor is directly targeting one of multiple stacked notes at this beat
       let chosen: Note[];
       if (hits.length > 1 && !hits.every((n) => selectedSet.has(n.id))) {
@@ -177,6 +216,8 @@ export const VelocityLane: React.FC<VelocityLaneProps> = ({
         active: true,
         mode: 'locked',
         lockedIds: chosen.map((n) => n.id),
+        initialVelocities: new Map(),
+        anchorVel: vel,
         lastX: x,
         dirty: true,
       };
@@ -190,6 +231,8 @@ export const VelocityLane: React.FC<VelocityLaneProps> = ({
         active: true,
         mode: 'sweep',
         lockedIds: [],
+        initialVelocities: new Map(),
+        anchorVel: vel,
         lastX: x,
         dirty: false,
       };
@@ -204,6 +247,22 @@ export const VelocityLane: React.FC<VelocityLaneProps> = ({
       const my = ev.clientY - curRect.top;
       const v = yToVel(my, latestRef.current.size.height);
       setDragVelPct(Math.round(v * 100));
+
+      if (cur.mode === 'multi') {
+        const delta = v - cur.anchorVel;
+        onPatchNotes(
+          cur.lockedIds.map((id) => {
+            const initVel = cur.initialVelocities.get(id) ?? cur.anchorVel;
+            return {
+              id,
+              velocity: Math.max(0.05, Math.min(1, initVel + delta)),
+            };
+          }),
+          false,
+        );
+        cur.dirty = true;
+        return;
+      }
 
       // If user started locked on a note but dragged horizontally > 16px, switch to sweep mode
       if (cur.mode === 'locked' && Math.abs(mx - cur.lastX) > 16) {
@@ -241,7 +300,15 @@ export const VelocityLane: React.FC<VelocityLaneProps> = ({
       if (dragRef.current.dirty) {
         onUpdateNotes(latestRef.current.composition.notes, true);
       }
-      dragRef.current = { active: false, mode: 'sweep', lockedIds: [], lastX: 0, dirty: false };
+      dragRef.current = {
+        active: false,
+        mode: 'sweep',
+        lockedIds: [],
+        initialVelocities: new Map(),
+        anchorVel: 0.8,
+        lastX: 0,
+        dirty: false,
+      };
       setDragVelPct(null);
       window.removeEventListener('mousemove', onWindowMove);
       window.removeEventListener('mouseup', onWindowUp);
