@@ -2,6 +2,7 @@ import React from 'react';
 import { audioEngine } from '../../audio';
 import type { Section } from '../../domain/music';
 import type { ChordCandidate, SectionAnalysis } from '../../domain/theory';
+import { getFitPillStyle } from '../fitColor';
 
 interface ChordExplorerProps {
   section?: Section;
@@ -107,13 +108,14 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
             <div className="candidate-actions">
               {sectionAnalysis.noteCount > 0 &&
                 (autoChord.outsideNoteCount === 0 ? (
-                  <span className="pill pill-clean">0 out</span>
+                  <span className="pill pill-clean">100% · 0 out</span>
                 ) : (
                   <span
-                    className="pill pill-outside"
+                    className="pill"
+                    style={getFitPillStyle(autoChord.noteFit)}
                     title={`Outside notes: ${autoChord.outsidePitchNames.join(', ')}`}
                   >
-                    {autoChord.outsideNoteCount} out ({Math.round((1 - autoChord.noteFit) * 100)}%)
+                    {Math.round(autoChord.noteFit * 100)}% ({autoChord.outsideNoteCount} out)
                   </span>
                 ))}
               <button
@@ -153,7 +155,7 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
       {topCandidates.map((chord) => {
         const isPinned = chord.id === section.selectedChordId;
         const fn = chord.harmonicFunction;
-        const outPct = Math.round((1 - chord.noteFit) * 100);
+        const inPct = Math.round(chord.noteFit * 100);
 
         return (
           <div
@@ -196,13 +198,14 @@ export const ChordExplorer: React.FC<ChordExplorerProps> = ({
               <div className="candidate-actions">
                 {sectionAnalysis.noteCount > 0 &&
                   (chord.outsideNoteCount === 0 ? (
-                    <span className="pill pill-clean">0 out</span>
+                    <span className="pill pill-clean">100% · 0 out</span>
                   ) : (
                     <span
-                      className="pill pill-outside"
+                      className="pill"
+                      style={getFitPillStyle(chord.noteFit)}
                       title={`Outside notes: ${chord.outsidePitchNames.join(', ')}`}
                     >
-                      {chord.outsideNoteCount} out ({outPct}%)
+                      {inPct}% ({chord.outsideNoteCount} out)
                     </span>
                   ))}
                 <button

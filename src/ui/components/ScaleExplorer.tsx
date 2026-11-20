@@ -1,6 +1,7 @@
 import React from 'react';
 import { audioEngine } from '../../audio';
 import type { ScaleCandidate } from '../../domain/theory';
+import { getFitPillStyle } from '../fitColor';
 
 interface ScaleExplorerProps {
   scales: ScaleCandidate[];
@@ -95,13 +96,14 @@ export const ScaleExplorer: React.FC<ScaleExplorerProps> = ({
               </span>
               <div className="candidate-actions">
                 {scale.outsideNoteCount === 0 ? (
-                  <span className="pill pill-clean">0 out</span>
+                  <span className="pill pill-clean">100% · 0 out</span>
                 ) : (
                   <span
-                    className="pill pill-outside"
+                    className="pill"
+                    style={getFitPillStyle(scale.coverage)}
                     title={`Outside notes: ${scale.outsidePitchNames.join(', ')}`}
                   >
-                    {scale.outsideNoteCount} out ({Math.round((1 - scale.coverage) * 100)}%)
+                    {Math.round(scale.coverage * 100)}% ({scale.outsideNoteCount} out)
                   </span>
                 )}
                 <button

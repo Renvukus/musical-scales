@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import type { Section, SnapGrid } from '../../domain/music';
 import type { CompositionAnalysis } from '../../domain/theory';
+import { getFitTextColor } from '../fitColor';
 
 interface SectionTimelineProps {
   sections: Section[];
@@ -170,11 +171,17 @@ export const SectionTimeline: React.FC<SectionTimelineProps> = ({
               </div>
               <div className="section-meta">
                 <span>
-                  {secAnalysis?.noteCount
-                    ? chosenChord && chosenChord.outsideNoteCount > 0
-                      ? `${chosenChord.outsideNoteCount} out (${Math.round((1 - chosenChord.noteFit) * 100)}%)`
-                      : `${chosenChord?.score ?? 0}% fit`
-                    : 'empty'}
+                  {secAnalysis?.noteCount ? (
+                    chosenChord && chosenChord.outsideNoteCount > 0 ? (
+                      <span style={{ color: getFitTextColor(chosenChord.noteFit) }}>
+                        {Math.round(chosenChord.noteFit * 100)}% ({chosenChord.outsideNoteCount} out)
+                      </span>
+                    ) : (
+                      `${chosenChord?.score ?? 0}% fit`
+                    )
+                  ) : (
+                    'empty'
+                  )}
                 </span>
                 {sorted.length > 1 && (
                   <button

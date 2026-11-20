@@ -12,6 +12,7 @@ import { ScaleExplorer } from './components/ScaleExplorer';
 import { SectionTimeline } from './components/SectionTimeline';
 import { TheoryInspector } from './components/TheoryInspector';
 import { TopBar } from './components/TopBar';
+import { getFitPillStyle } from './fitColor';
 
 export const App: React.FC = () => {
   const [history, dispatch] = useReducer(compositionReducer, undefined, createInitialHistory);
@@ -410,17 +411,19 @@ export const App: React.FC = () => {
                 {analysis.activeScale && (
                   <span
                     className={`pill ${
-                      analysis.activeScale.outsideNoteCount === 0
-                        ? 'pill-clean'
-                        : 'pill-outside'
+                      analysis.activeScale.outsideNoteCount === 0 ? 'pill-clean' : ''
                     }`}
+                    style={
+                      analysis.activeScale.outsideNoteCount === 0
+                        ? undefined
+                        : getFitPillStyle(analysis.activeScale.coverage)
+                    }
                   >
-                    {analysis.activeScale.score}% ·{' '}
                     {analysis.activeScale.outsideNoteCount === 0
-                      ? '0 out'
-                      : `${analysis.activeScale.outsideNoteCount} out (${Math.round(
-                          (1 - analysis.activeScale.coverage) * 100,
-                        )}%)`}
+                      ? '100% · 0 out'
+                      : `${Math.round(analysis.activeScale.coverage * 100)}% (${
+                          analysis.activeScale.outsideNoteCount
+                        } out)`}
                   </span>
                 )}
               </div>
