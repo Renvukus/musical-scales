@@ -61,7 +61,7 @@ export const App: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<'chords' | 'scales' | 'map'>('chords');
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [snap, setSnap] = useState<SnapGrid>(0.5);
-  const [patch, setPatch] = useState<SynthPatch>('epiano');
+  const [patch, setPatch] = useState<SynthPatch>('grand');
   const [sampleState, setSampleState] = useState<SampleLoadState>('idle');
   const [showGuides, setShowGuides] = useState(true);
   const [chordPreview, setChordPreview] = useState(false);
@@ -296,7 +296,10 @@ export const App: React.FC = () => {
   ]);
 
   // Stop audio on unmount & subscribe to sampled piano loading status
-  useEffect(() => () => audioEngine.stop(), []);
+  useEffect(() => {
+    audioEngine.setPatch('grand');
+    return () => audioEngine.stop();
+  }, []);
   useEffect(() => audioEngine.subscribeSampleState(setSampleState), []);
 
   // Browser localStorage autosave (debounced + immediate flush before tab close)

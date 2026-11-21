@@ -15,7 +15,7 @@ export class WebAudioEngine implements AudioEngine {
   private hammerBuffer: AudioBuffer | null = null;
   private reverbInput: GainNode | null = null;
   private sampledPiano = new SampledPianoBank();
-  private patch: SynthPatch = 'epiano';
+  private patch: SynthPatch = 'grand';
   private volume = 0.72;
 
   private playing = false;
