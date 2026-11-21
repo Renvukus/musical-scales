@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
-import { audioEngine, type SynthPatch } from '../audio';
+import { audioEngine, type SampleLoadState, type SynthPatch } from '../audio';
 import type { Composition, SnapGrid } from '../domain/music';
 import type { ChordCandidate, ScaleCandidate } from '../domain/theory';
 import { exportCompositionToMidi, importMidiToComposition } from '../midi';
@@ -62,6 +62,7 @@ export const App: React.FC = () => {
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [snap, setSnap] = useState<SnapGrid>(0.5);
   const [patch, setPatch] = useState<SynthPatch>('epiano');
+  const [sampleState, setSampleState] = useState<SampleLoadState>('idle');
   const [showGuides, setShowGuides] = useState(true);
   const [chordPreview, setChordPreview] = useState(false);
   const [loop, setLoop] = useState(true);
@@ -294,8 +295,9 @@ export const App: React.FC = () => {
     showNewProjectDialog,
   ]);
 
-  // Stop audio on unmount
+  // Stop audio on unmount & subscribe to sampled piano loading status
   useEffect(() => () => audioEngine.stop(), []);
+  useEffect(() => audioEngine.subscribeSampleState(setSampleState), []);
 
   // Browser localStorage autosave (debounced + immediate flush before tab close)
   const latestCompRef = React.useRef(composition);
@@ -418,6 +420,7 @@ export const App: React.FC = () => {
         timeSignature={composition.timeSignature}
         snap={snap}
         patch={patch}
+        sampleState={sampleState}
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         showGuides={showGuides}

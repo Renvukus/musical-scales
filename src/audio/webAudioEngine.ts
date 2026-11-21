@@ -1,11 +1,12 @@
-import type { AudioEngine, PlaybackOptions, SynthPatch } from './types';
+import { SampledPianoBank } from './sampledPiano';
+import type { AudioEngine, PlaybackOptions, SampleLoadState, SynthPatch } from './types';
 
 function midiToFreq(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 /**
- * Lightweight, zero-asset Web Audio synthesizer and lookahead transport scheduler.
+ * Web Audio synthesizer, sampled Salamander Grand Piano player, and lookahead transport scheduler.
  */
 export class WebAudioEngine implements AudioEngine {
   private ctx: AudioContext | null = null;
@@ -13,6 +14,7 @@ export class WebAudioEngine implements AudioEngine {
   private pianoWave: PeriodicWave | null = null;
   private hammerBuffer: AudioBuffer | null = null;
   private reverbInput: GainNode | null = null;
+  private sampledPiano = new SampledPianoBank();
   private patch: SynthPatch = 'epiano';
   private volume = 0.72;
 
@@ -179,8 +181,16 @@ export class WebAudioEngine implements AudioEngine {
     return this.ctx;
   }
 
+  subscribeSampleState(listener: (state: SampleLoadState) => void): () => void {
+    return this.sampledPiano.subscribe(listener);
+  }
+
   setPatch(patch: SynthPatch): void {
     this.patch = patch;
+    if (patch === 'grand') {
+      const ctx = this.ensureContext();
+      void this.sampledPiano.load(ctx);
+    }
   }
 
   getPatch(): SynthPatch {
@@ -210,6 +220,57 @@ export class WebAudioEngine implements AudioEngine {
       this.trackVoiceWindow(pitch, when, dur);
     }
     const peakGain = Math.max(0.015, Math.min(0.42, velocity * 0.38));
+
+    if (this.patch === 'grand') {
+      const sample = this.sampledPiano.getNearestSample(pitch);
+      if (sample) {
+        const source = ctx.createBufferSource();
+        source.buffer = sample.buffer;
+        source.playbackRate.setValueAtTime(sample.playbackRate, when);
+
+        // Velocity-responsive warmth filter (soft notes are mellow, loud notes are bright)
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.Q.value = 0.5;
+        const clampedVel = Math.max(0.05, Math.min(1, velocity));
+        filter.frequency.setValueAtTime(1600 + clampedVel * 14000, when);
+
+        const amp = ctx.createGain();
+        const sampleGain = Math.max(0.04, Math.min(0.95, clampedVel * 0.85));
+        const tAttack = when + 0.003;
+        const tReleaseEnd = isPreview ? when + dur : when + dur + 0.34;
+        const tReleaseStart = isPreview
+          ? Math.max(tAttack + 0.01, tReleaseEnd - 0.018)
+          : when + dur;
+
+        amp.gain.setValueAtTime(0, when);
+        amp.gain.linearRampToValueAtTime(sampleGain, tAttack);
+        if (tReleaseStart > tAttack + 0.002) {
+          amp.gain.setValueAtTime(sampleGain, tReleaseStart);
+        }
+        amp.gain.linearRampToValueAtTime(0, tReleaseEnd);
+
+        source.connect(filter);
+        filter.connect(amp);
+        amp.connect(this.masterGain);
+        if (this.reverbInput && !isPreview) {
+          const revSend = ctx.createGain();
+          revSend.gain.value = 0.22;
+          amp.connect(revSend);
+          revSend.connect(this.reverbInput);
+        }
+
+        const handle = { oscs: [source], gain: amp };
+        const targetSet = isPreview ? this.previewNodes : this.activeNodes;
+        targetSet.add(handle);
+        source.onended = () => targetSet.delete(handle);
+
+        source.start(when);
+        source.stop(tReleaseEnd + 0.02);
+        return;
+      }
+      // If samples are still downloading or offline, fall through to built-in Acoustic Piano synth
+    }
 
     if (this.patch === 'triangle') {
       const osc = ctx.createOscillator();

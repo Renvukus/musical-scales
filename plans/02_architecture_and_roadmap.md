@@ -104,5 +104,5 @@ Colors communicate harmonic meaning consistently across the piano roll, section 
 - [ ] Configurable scoring weight profiles (Pop/Diatonic, Jazz/Extended, Modal/Experimental)
 - [ ] Modulation & temporary tonal center detection across sections
 - [ ] Velocity lane & metronome toggle
-- [ ] Sampled grand piano (Salamander Lite SoundFont) option in `AudioEngine`
+- [x] Sampled grand piano (Salamander Lite SoundFont) option in `AudioEngine`
 - [ ] Multi-track view (melody vs. accompaniment weighting)

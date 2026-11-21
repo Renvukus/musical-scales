@@ -1,6 +1,8 @@
 import type { Note } from '../domain/music';
 
-export type SynthPatch = 'epiano' | 'triangle';
+export type SynthPatch = 'epiano' | 'grand' | 'triangle';
+
+export type SampleLoadState = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface PlaybackOptions {
   notes: Note[];
@@ -31,4 +33,5 @@ export interface AudioEngine {
   stop(): void;
   isPlaying(): boolean;
   subscribeActivePitches(listener: (pitches: ReadonlySet<number>) => void): () => void;
+  subscribeSampleState(listener: (state: SampleLoadState) => void): () => void;
 }

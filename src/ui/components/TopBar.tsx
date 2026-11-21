@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { SynthPatch } from '../../audio';
+import type { SampleLoadState, SynthPatch } from '../../audio';
 import { SNAP_OPTIONS, type SnapGrid, type TimeSignature } from '../../domain/music';
 import { PRESETS } from '../../state/presets';
 
@@ -20,6 +20,7 @@ interface TopBarProps {
   timeSignature: TimeSignature;
   snap: SnapGrid;
   patch: SynthPatch;
+  sampleState: SampleLoadState;
   canUndo: boolean;
   canRedo: boolean;
   showGuides: boolean;
@@ -50,6 +51,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   timeSignature,
   snap,
   patch,
+  sampleState,
   canUndo,
   canRedo,
   showGuides,
@@ -216,9 +218,16 @@ export const TopBar: React.FC<TopBarProps> = ({
           className="control-select"
           value={patch}
           onChange={(e) => onPatchChange(e.target.value as SynthPatch)}
-          title="Synthesizer sound"
+          title="Instrument sound"
         >
           <option value="epiano">Acoustic Piano</option>
+          <option value="grand">
+            {sampleState === 'loading'
+              ? 'Grand Piano (Loading…)'
+              : sampleState === 'error'
+                ? 'Grand Piano (Offline)'
+                : 'Grand Piano (Sampled)'}
+          </option>
           <option value="triangle">Triangle Synth</option>
         </select>
 
