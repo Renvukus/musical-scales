@@ -228,15 +228,21 @@ export class WebAudioEngine implements AudioEngine {
         source.buffer = sample.buffer;
         source.playbackRate.setValueAtTime(sample.playbackRate, when);
 
-        // Velocity-responsive warmth filter (soft notes are mellow, loud notes are bright)
+        // Velocity-responsive warmth filter + gentle upper-register presence
         const filter = ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.Q.value = 0.5;
         const clampedVel = Math.max(0.05, Math.min(1, velocity));
-        filter.frequency.setValueAtTime(1600 + clampedVel * 14000, when);
+        const filterCutoff = Math.min(
+          18000,
+          1600 + clampedVel * 14000 + Math.max(0, pitch - 60) * 90,
+        );
+        filter.frequency.setValueAtTime(filterCutoff, when);
 
+        // Balance Salamander register energy: gently tame heavy bass, lift treble melodies
+        const registerTilt = Math.max(0.72, Math.min(1.42, 1 + (pitch - 60) * 0.015));
         const amp = ctx.createGain();
-        const sampleGain = Math.max(0.04, Math.min(0.95, clampedVel * 0.85));
+        const sampleGain = Math.max(0.03, Math.min(1.15, clampedVel * 0.82 * registerTilt));
         const tAttack = when + 0.003;
         const tReleaseEnd = isPreview ? when + dur : when + dur + 0.34;
         const tReleaseStart = isPreview
